@@ -40,7 +40,11 @@ echo "Create a token here: https://socket.dev/dashboard/settings/api-tokens"
 echo "Recommended minimum scope for current package score lookup: packages:list"
 echo "Optional future active-incident feed scope: threat-feed:list"
 printf "Paste Socket API token, or press Enter to skip: "
-IFS= read -r SOCKET_TOKEN_INPUT || true
+if [ -r /dev/tty ]; then
+  IFS= read -r SOCKET_TOKEN_INPUT < /dev/tty || true
+else
+  IFS= read -r SOCKET_TOKEN_INPUT || true
+fi
 
 if [ -n "$SOCKET_TOKEN_INPUT" ]; then
   umask 077
@@ -64,6 +68,15 @@ cat > "$BIN_PATH" <<EOF
 exec bun run "$INSTALL_DIR/src/cli.ts" "\$@"
 EOF
 chmod +x "$BIN_PATH"
+
+if [ -r /dev/tty ]; then
+  echo
+  echo "Launching Supply Chain Guard config."
+  "$BIN_PATH" config < /dev/tty > /dev/tty
+else
+  echo
+  echo "Skipping interactive config because no TTY is available. Run: scguard config"
+fi
 
 echo
 echo "Installed: $BIN_PATH"

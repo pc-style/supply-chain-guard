@@ -8,7 +8,7 @@ Local install gate for npm packages and VS Code extensions. It analyzes a packag
 curl -fsSL https://raw.githubusercontent.com/pc-style/supply-chain-guard/main/install.sh | bash
 ```
 
-The installer is also the updater. It clones or pulls the repo into `~/.local/share/supply-chain-guard`, runs `bun install`, and creates `~/.local/bin/scguard`.
+The installer is also the updater. It clones or pulls the repo into `~/.local/share/supply-chain-guard`, runs `bun install`, creates `~/.local/bin/scguard`, and launches the config TUI.
 
 During install it asks for an optional Socket API token and stores it in `~/.config/supply-chain-guard/env`. Create a token here:
 
@@ -26,6 +26,8 @@ bun run scguard add <package[@version]> [--dev] [--approve]
 bun run scguard add <package[@version]> --agent codex|pi|both --approve
 bun run scguard scan-npm <package[@version]> [--json]
 bun run scguard scan-vsix <path-to-extension.vsix> [--json]
+bun run scguard config
+bun run scguard config --show
 bun run scguard shell-hook
 bun run scguard guard bun|npm|pnpm|yarn|code <args...>
 bun run scguard agent-prompt <report.json> --agent codex|pi
@@ -35,6 +37,8 @@ bun run scguard agent-review <report.json> --agent codex|pi|both
 `add` does not install by default. It resolves the package tarball, downloads it to `.scguard/cache`, extracts it to `.scguard/work`, analyzes it, writes reports to `.scguard/reports`, and stops. Add `--approve` to install after the analysis gate passes.
 
 Add `--agent codex`, `--agent pi`, or `--agent both` to run a mandatory coding-agent review before install. The agent must end with `SCGUARD_DECISION: approve`; `reject`, `manual-review`, missing decisions, non-zero exits, or missing agent binaries block the install.
+
+Run `scguard config` to choose the default agent review behavior for every scan and install gate: no agent, Codex, PI, or both. PI runs with `--no-tools --no-context-files`; Codex runs through `codex exec` with a read-only sandbox.
 
 Recommended shell hook:
 

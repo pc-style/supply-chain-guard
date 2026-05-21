@@ -39,6 +39,11 @@ type Report = {
 };
 
 type AgentName = "codex" | "pi";
+type AgentMode = "none" | AgentName | "both";
+
+type Config = {
+  agentReview: AgentMode;
+};
 
 type AgentReview = {
   agent: AgentName;
@@ -72,6 +77,11 @@ const CACHE_DIR = join(GUARD_DIR, "cache");
 const WORK_DIR = join(GUARD_DIR, "work");
 const REPORT_DIR = join(GUARD_DIR, "reports");
 const CONFIG_ENV_PATH = join(homedir(), ".config", "supply-chain-guard", "env");
+const CONFIG_DIR = join(homedir(), ".config", "supply-chain-guard");
+const CONFIG_PATH = join(CONFIG_DIR, "config.json");
+const DEFAULT_CONFIG: Config = {
+  agentReview: "none",
+};
 
 const INSTALL_SCRIPTS = new Set(["preinstall", "install", "postinstall", "prepare"]);
 const SUSPICIOUS_PATTERNS: Array<[RegExp, string, Risk, string]> = [
@@ -99,7 +109,8 @@ async function main() {
   if (cmd === "scan-npm") {
     const target = requireArg(args[0], "scan-npm requires a package spec");
     const report = await scanNpm(target);
-    await emitReport(report, args.includes("--json"));
+    const reportPath = await emitReport(report, args.includes("--json"));
+    await maybeRunConfiguredAgentReview(report, reportPath, args, args.includes("--json"));
     return;
   }
 
@@ -109,7 +120,7 @@ async function main() {
     if (specs.length === 0) throw new Error("add requires at least one package spec");
     const approve = args.includes("--approve");
     const dev = cleanArgs.includes("--dev") || cleanArgs.includes("-d");
-    const agentMode = parseAgentMode(args);
+    const agentMode = await resolveAgentMode(args);
     for (const spec of specs) {
       const report = await scanNpm(spec);
       let reportPath = await emitReport(report, false);
@@ -120,10 +131,7 @@ async function main() {
         const agentReviews = await runAgentReviews(report, reportPath, agentMode);
         report.agentReviews = agentReviews;
         reportPath = await emitReport(report, false);
-        const failed = agentReviews.find((review) => review.status !== "approved");
-        if (failed) {
-          throw new Error(`Blocked ${spec}: ${failed.agent} returned ${failed.status}. See ${failed.outputPath}`);
-        }
+        blockOnFailedReview(spec, agentReviews);
       }
       if (!approve) {
         console.log(`Analysis complete for ${spec}. Install withheld until --approve is supplied.`);
@@ -139,7 +147,8 @@ async function main() {
   if (cmd === "scan-vsix") {
     const file = requireArg(args[0], "scan-vsix requires a .vsix path");
     const report = await scanVsix(resolve(file));
-    await emitReport(report, args.includes("--json"));
+    const reportPath = await emitReport(report, args.includes("--json"));
+    await maybeRunConfiguredAgentReview(report, reportPath, args, args.includes("--json"));
     return;
   }
 
@@ -155,7 +164,7 @@ async function main() {
   if (cmd === "agent-review") {
     const reportPath = requireArg(args[0], "agent-review requires a report path");
     const report = await readJson<Report>(reportPath);
-    const agentMode = parseAgentMode(args);
+    const agentMode = await resolveAgentMode(args);
     const agents = agentMode.length > 0 ? agentMode : ["codex" as const];
     const reviews = await runAgentReviews(report, reportPath, agents);
     console.log(JSON.stringify(reviews, null, 2));
@@ -170,6 +179,11 @@ async function main() {
 
   if (cmd === "shell-hook") {
     console.log(shellHook());
+    return;
+  }
+
+  if (cmd === "config") {
+    await configCommand(args);
     return;
   }
 
@@ -452,13 +466,12 @@ async function guardCommand(args: string[]) {
       if (!report.summary.installAllowed) {
         throw new Error(`Blocked ${spec}: high-risk findings found. See ${reportPath}`);
       }
-      const agentMode = parseAgentMode(args.slice(1));
+      const agentMode = await resolveAgentMode(args.slice(1));
       if (agentMode.length > 0) {
         const reviews = await runAgentReviews(report, reportPath, agentMode);
         report.agentReviews = reviews;
         reportPath = await emitReport(report, false);
-        const failed = reviews.find((review) => review.status !== "approved");
-        if (failed) throw new Error(`Blocked ${spec}: ${failed.agent} returned ${failed.status}. See ${failed.outputPath}`);
+        blockOnFailedReview(spec, reviews);
       }
     }
   }
@@ -481,13 +494,12 @@ async function guardVsCodeExtension(command: string, args: string[], specs: stri
   if (!report.summary.installAllowed) {
     throw new Error(`Blocked ${target}: high-risk findings found. See ${reportPath}`);
   }
-  const agentMode = parseAgentMode(args);
+  const agentMode = await resolveAgentMode(args);
   if (agentMode.length > 0) {
     const reviews = await runAgentReviews(report, reportPath, agentMode);
     report.agentReviews = reviews;
     reportPath = await emitReport(report, false);
-    const failed = reviews.find((review) => review.status !== "approved");
-    if (failed) throw new Error(`Blocked ${target}: ${failed.agent} returned ${failed.status}. See ${failed.outputPath}`);
+    blockOnFailedReview(target, reviews);
   }
   requireActiveIncidentAcceptance();
   await run(command, stripGuardOptions(args));
@@ -638,7 +650,7 @@ async function runAgentReview(report: Report, reportPath: string, agent: AgentNa
   const prompt = agentReviewPrompt(report, reportPath, agent);
   const outputPath = join(REPORT_DIR, `${report.target.replace(/[^a-z0-9_.@-]+/gi, "_")}-${agent}-review.txt`);
   const cmd = agent === "codex"
-    ? ["codex", "exec", "--cd", ROOT, "--skip-git-repo-check", "-"]
+    ? ["codex", "exec", "--cd", ROOT, "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-rules", "-"]
     : ["pi", "-p", "--no-tools", "--no-context-files", prompt];
   const proc = agent === "codex"
     ? Bun.spawn(cmd, { stdin: "pipe", stdout: "pipe", stderr: "pipe" })
@@ -706,6 +718,129 @@ function parseAgentMode(args: string[]): AgentName[] {
   if (value === "pi") return ["pi"];
   if (value === "both") return ["codex", "pi"];
   throw new Error("--agent must be one of: none, codex, pi, both");
+}
+
+async function resolveAgentMode(args: string[]): Promise<AgentName[]> {
+  const explicit = readOption(args, "--agent");
+  if (explicit) return parseAgentMode(args);
+  return agentsFromMode((await readConfig()).agentReview);
+}
+
+function agentsFromMode(mode: AgentMode): AgentName[] {
+  if (mode === "codex") return ["codex"];
+  if (mode === "pi") return ["pi"];
+  if (mode === "both") return ["codex", "pi"];
+  return [];
+}
+
+async function maybeRunConfiguredAgentReview(report: Report, reportPath: string, args: string[], json: boolean) {
+  const agents = await resolveAgentMode(args);
+  if (agents.length === 0) return;
+  const reviews = await runAgentReviews(report, reportPath, agents);
+  report.agentReviews = reviews;
+  await emitReport(report, json);
+  blockOnFailedReview(report.target, reviews);
+}
+
+function blockOnFailedReview(target: string, reviews: AgentReview[]) {
+  const failed = reviews.find((review) => review.status !== "approved");
+  if (failed) {
+    throw new Error(`Blocked ${target}: ${failed.agent} returned ${failed.status}. See ${failed.outputPath}`);
+  }
+}
+
+async function configCommand(args: string[]) {
+  if (args.includes("--show")) {
+    console.log(JSON.stringify(await readConfig(), null, 2));
+    return;
+  }
+  const explicit = readOption(args, "--agent");
+  if (explicit) {
+    const config = await readConfig();
+    config.agentReview = normalizeAgentMode(explicit);
+    await writeConfig(config);
+    console.log(`Saved default agent review: ${config.agentReview}`);
+    return;
+  }
+  const config = await readConfig();
+  config.agentReview = await agentConfigTui(config.agentReview);
+  await writeConfig(config);
+  console.log(`Saved default agent review: ${config.agentReview}`);
+}
+
+async function readConfig(): Promise<Config> {
+  try {
+    const parsed = await readJson<Partial<Config>>(CONFIG_PATH);
+    return {
+      ...DEFAULT_CONFIG,
+      agentReview: normalizeAgentMode(parsed.agentReview ?? DEFAULT_CONFIG.agentReview),
+    };
+  } catch {
+    return DEFAULT_CONFIG;
+  }
+}
+
+async function writeConfig(config: Config) {
+  await mkdir(CONFIG_DIR, { recursive: true });
+  await Bun.write(CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`);
+}
+
+function normalizeAgentMode(value: string): AgentMode {
+  if (value === "none" || value === "codex" || value === "pi" || value === "both") return value;
+  throw new Error("agentReview must be one of: none, codex, pi, both");
+}
+
+async function agentConfigTui(current: AgentMode): Promise<AgentMode> {
+  const options: Array<{ value: AgentMode; label: string; detail: string }> = [
+    { value: "none", label: "No agent review", detail: "Only deterministic local analysis runs before install." },
+    { value: "codex", label: "Codex", detail: "Run codex exec in read-only mode for every scan/install gate." },
+    { value: "pi", label: "PI", detail: "Run pi -p with no tools for every scan/install gate." },
+    { value: "both", label: "Codex + PI", detail: "Require both agents to approve before install continues." },
+  ];
+  let index = Math.max(0, options.findIndex((option) => option.value === current));
+  if (!process.stdin.isTTY) {
+    const answer = prompt("Default agent review (none/codex/pi/both): ") ?? current;
+    return normalizeAgentMode(answer.trim() || current);
+  }
+  process.stdin.setRawMode?.(true);
+  process.stdin.resume();
+  process.stdin.setEncoding("utf8");
+  try {
+    while (true) {
+      renderAgentConfigTui(options, index);
+      const key = await readKey();
+      const digit = key.match(/[1-4]/)?.[0];
+      if (key.includes("\u0003") || key.includes("q")) throw new Error("Config cancelled");
+      if (digit) index = Number(digit) - 1;
+      if (key.includes("\r") || key.includes("\n")) {
+        process.stdout.write("\x1b[2J\x1b[H");
+        return options[index].value;
+      }
+      if (key === "\u001b[A" || key === "k") index = (index + options.length - 1) % options.length;
+      if (key === "\u001b[B" || key === "j") index = (index + 1) % options.length;
+    }
+  } finally {
+    process.stdin.setRawMode?.(false);
+    process.stdin.pause();
+  }
+}
+
+function renderAgentConfigTui(options: Array<{ value: AgentMode; label: string; detail: string }>, index: number) {
+  process.stdout.write("\x1b[2J\x1b[H");
+  process.stdout.write("Supply Chain Guard Config\n\n");
+  process.stdout.write("Choose default agent review for scans and install gates.\n");
+  process.stdout.write("Use arrows/j/k, 1-4, Enter to save, q to cancel.\n\n");
+  options.forEach((option, optionIndex) => {
+    const pointer = optionIndex === index ? ">" : " ";
+    process.stdout.write(`${pointer} ${optionIndex + 1}. ${option.label}\n`);
+    process.stdout.write(`   ${option.detail}\n`);
+  });
+}
+
+function readKey(): Promise<string> {
+  return new Promise((resolveKey) => {
+    process.stdin.once("data", (chunk) => resolveKey(String(chunk)));
+  });
 }
 
 function stripGuardOptions(args: string[]) {
@@ -861,6 +996,8 @@ Usage:
   bun run scguard scan-vsix <extension.vsix> [--json]
   bun run scguard add <package[@version]> --agent codex|pi|both --approve
   bun run scguard agent-review <report.json> --agent codex|pi|both
+  bun run scguard config
+  bun run scguard config --show
   bun run scguard guard bun|npm|pnpm|yarn|code <args...>
   bun run scguard shell-hook
   bun run scguard agent-prompt <report.json> --agent codex|pi
