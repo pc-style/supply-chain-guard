@@ -15,15 +15,26 @@ export async function checkSocket(name: string, version: string): Promise<Socket
       message: "SOCKET_API_KEY is not set; Socket intelligence was not queried.",
     };
   }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
   try {
     const res = await fetch(url, {
+      signal: controller.signal,
       headers: {
         Authorization: `Basic ${Buffer.from(`${token}:`).toString("base64")}`,
         Accept: "application/json",
       },
     });
+    clearTimeout(timeout);
     if (!res.ok) {
-      return { status: "error", package: name, version, url, message: `Socket returned HTTP ${res.status}` };
+      const message = res.status === 401 || res.status === 403
+        ? `Socket API token is invalid or lacks permission (HTTP ${res.status})`
+        : res.status === 429
+          ? "Socket API rate limit reached (HTTP 429); score skipped"
+          : res.status === 404
+            ? `Package not found in Socket index (HTTP 404)`
+            : `Socket returned HTTP ${res.status}`;
+      return { status: "error", package: name, version, url, message };
     }
     const data = await res.json() as Record<string, any>;
     const score = data.score ?? data;
@@ -35,13 +46,11 @@ export async function checkSocket(name: string, version: string): Promise<Socket
         : undefined;
     return { status: "checked", package: name, version, url, supplyChainRisk, rawScore: score };
   } catch (error) {
-    return {
-      status: "error",
-      package: name,
-      version,
-      url,
-      message: error instanceof Error ? error.message : String(error),
-    };
+    clearTimeout(timeout);
+    const message = error instanceof Error && error.name === "AbortError"
+      ? "Socket API timed out after 10s"
+      : error instanceof Error ? error.message : String(error);
+    return { status: "error", package: name, version, url, message };
   }
 }
 
@@ -91,22 +100,28 @@ export function agentReviewPrompt(report: Report, reportPath: string, agent: Age
   return [
     `You are ${agent === "pi" ? "PI" : "Codex"} acting as a mandatory supply-chain security reviewer before installation.`,
     "",
-    "Return a clear final decision on its own line using exactly one of:",
+    "Analyze the JSON report below and cite the concrete findings and intelligence that drove your decision.",
+    "",
+    "At the very end of your response — after all analysis — write your decision on its own line using",
+    "exactly one of these three forms (no surrounding text, no quotation marks, no trailing words):",
+    "",
     "SCGUARD_DECISION: approve",
     "SCGUARD_DECISION: reject",
     "SCGUARD_DECISION: manual-review",
     "",
-    "Approve only if the package/update appears safe to install based on the report.",
-    "Reject if the package appears malicious or unjustifiably dangerous.",
-    "Use manual-review if the report is insufficient, ambiguous, or requires human source inspection.",
+    "Do NOT quote or echo these tokens anywhere in your analysis prose.",
+    "Write the SCGUARD_DECISION line exactly once, as the final line of your output.",
+    "",
+    "Decision criteria:",
+    "- approve: package appears safe based on the report findings and intelligence.",
+    "- reject: package appears malicious or poses unjustifiable risk.",
+    "- manual-review: report is insufficient, ambiguous, or requires human inspection of source code.",
     "",
     `Repository root: ${ROOT}`,
     `Report path: ${relative(ROOT, reportPath)}`,
     `Target: ${report.target}`,
     `Kind: ${report.kind}`,
     `Risk: ${report.summary.risk}`,
-    "",
-    "Analyze the JSON report below. Cite the concrete findings and intelligence that drove your decision.",
     "",
     "```json",
     JSON.stringify(report, null, 2),

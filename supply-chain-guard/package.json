@@ -13,7 +13,8 @@
   "scripts": {
     "scguard": "bun run src/cli.ts",
     "typecheck": "bunx tsc --noEmit",
-    "check": "bun run typecheck && bun run src/cli.ts --help && bun run src/cli.ts self-test"
+    "test": "bun test src/analysis.test.ts src/integrations.test.ts",
+    "check": "bun run typecheck && bun run src/cli.ts --help && bun run src/cli.ts self-test && bun run test"
   },
   "repository": {
     "type": "git",

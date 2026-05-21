@@ -24,6 +24,7 @@ import {
   selfTest,
   shellHook,
 } from "./commands";
+import { banner, c, style } from "./ui";
 
 async function main() {
   const cliArgs = normalizeArgv(Bun.argv);
@@ -34,7 +35,7 @@ async function main() {
   await ensureDirs();
 
   if (!cmd || cmd === "--help" || cmd === "-h") {
-    help();
+    await help();
     return;
   }
 
@@ -146,44 +147,54 @@ function normalizeArgv(argv: string[]) {
   return raw;
 }
 
-function help() {
-  console.log(`Supply Chain Guard
+async function help() {
+  const pkg = await readJson<{ version: string }>(join(dirname(CLI_ENTRY), "..", "package.json")).catch(() => ({ version: "0.0.0" }));
+  console.log(banner(pkg.version));
+  console.log("");
+  section("Common");
+  item("scguard review", "<package[@version]> [--agent codex|pi|both]", "Download, stage, and analyze a package without installing it.");
+  item("scguard install", "<package[@version]> [--dev] [--agent codex|pi|both]", "Review, then install only after the gate (and any agent review) passes.");
+  item("scguard scan-vsix", "<extension.vsix> [--json]", "Analyze a downloaded VS Code extension artifact.");
+  item("scguard doctor", "", "Check dependencies, PATH, shell hook, Socket token, and agent CLIs.");
+  item("scguard clean", "[--reports] [--cache] [--work] [--all]", "Remove cached artifacts, working dirs, or report history.");
+  item("scguard config", "[--show] [--agent none|codex|pi|both]", "Set the default agent-review policy.");
 
-Common:
-  scguard review <package[@version]> [--agent codex|pi|both]
-      Download, stage, and analyze a package without installing it.
-  scguard install <package[@version]> [--dev] [--agent codex|pi|both]
-      Review the package; install it only after the gate (and any agent review) passes.
-  scguard scan-vsix <extension.vsix> [--json]
-      Analyze a downloaded VS Code extension artifact.
-  scguard doctor
-      Check dependencies, PATH, shell hook, Socket token, and agent CLIs.
-  scguard clean [--reports] [--cache] [--work] [--all]
-      Remove cached artifacts, working dirs, or report history.
-  scguard config [--show] [--agent none|codex|pi|both]
-      Set the default agent-review policy.
+  section("Setup");
+  item("scguard shell-hook", "", "Print shell functions that route bun/npm/pnpm/yarn/code through scguard.");
+  item("scguard version", "", "Print the installed version.");
 
-Setup:
-  scguard shell-hook
-      Print shell functions that route bun/npm/pnpm/yarn/code through scguard.
-  scguard version
+  section("Advanced");
+  item("scguard scan-npm", "<package[@version]> [--json]", "Scan a published npm package directly.");
+  item("scguard scan-stage", "<stage-id> [--json]", "Scan an npm staged-publish artifact.");
+  item("scguard guard", "bun|npm|pnpm|yarn|code <args...>", "Wrap a package-manager command behind the gate.");
+  item("scguard agent-prompt", "<report.json> --agent codex|pi", "Emit the agent review prompt for a report.");
+  item("scguard agent-review", "<report.json> --agent codex|pi|both", "Run an agent review against a report.");
+  item("scguard self-test", "", "Validate analysis on the bundled fixture.");
 
-Advanced:
-  scguard scan-npm <package[@version]> [--json]
-  scguard scan-stage <stage-id> [--json]
-  scguard guard bun|npm|pnpm|yarn|code <args...>
-  scguard agent-prompt <report.json> --agent codex|pi
-  scguard agent-review <report.json> --agent codex|pi|both
-  scguard self-test
+  section("Environment");
+  env("SCGUARD_BYPASS=1", "Skip the guard for a single command.");
+  env("SOCKET_API_KEY", "Enable Socket.dev intelligence on npm scans.");
+  env("SCGUARD_ACTIVE_INCIDENT", "Require typed acknowledgement during an active advisory.");
+  console.log("");
+}
 
-Environment:
-  SCGUARD_BYPASS=1            Skip the guard for a single command.
-  SOCKET_API_KEY              Enable Socket.dev intelligence on npm scans.
-  SCGUARD_ACTIVE_INCIDENT     Require typed acknowledgement during an active advisory.
-`);
+function section(title: string) {
+  console.log("");
+  console.log(c.amber(title, true));
+}
+
+function item(cmd: string, sig: string, detail: string) {
+  const head = `${style.prompt()} ${c.white(cmd, true)}${sig ? " " + c.blue(sig) : ""}`;
+  console.log(`  ${head}`);
+  console.log(`      ${c.gray(detail)}`);
+}
+
+function env(key: string, detail: string) {
+  console.log(`  ${c.amber(key.padEnd(28), true)} ${c.gray(detail)}`);
 }
 
 main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
+  const msg = error instanceof Error ? error.message : String(error);
+  console.error(`${style.blocked("error:")} ${c.white(msg)}`);
   process.exit(1);
 });

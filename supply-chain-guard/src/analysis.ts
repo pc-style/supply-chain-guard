@@ -4,6 +4,7 @@ import { basename, join } from "node:path";
 import {
   CACHE_DIR,
   WORK_DIR,
+  commandExists,
   debug,
   objectValue,
   readActiveAdvisory,
@@ -15,13 +16,20 @@ import type { Finding, Report, Risk } from "./core";
 import { checkSocket } from "./integrations";
 
 const INSTALL_SCRIPTS = new Set(["preinstall", "install", "postinstall", "prepare"]);
-const SUSPICIOUS_PATTERNS: Array<[RegExp, string, Risk, string]> = [
+
+// Patterns checked in ALL contexts (scripts + files).
+const PATTERNS_ALL: Array<[RegExp, string, Risk, string]> = [
   [/curl\s+[^|]+\|\s*(sh|bash)/i, "pipe-to-shell", "high", "Downloads and executes remote shell code."],
   [/wget\s+[^|]+\|\s*(sh|bash)/i, "pipe-to-shell", "high", "Downloads and executes remote shell code."],
-  [/(require\(["']child_process["']\)|from ["']node:child_process["']|execSync\(|spawnSync\(|eval\(|new Function\()/, "dynamic-execution", "medium", "Uses dynamic process or code execution."],
+  [/(npmrc|\.ssh\/|id_rsa|AWS_SECRET|GITHUB_TOKEN|NPM_TOKEN)/i, "credential-access", "high", "References credentials or sensitive key paths."],
   [/(base64\s+-d|Buffer\.from\([^)]*base64)/i, "encoded-payload", "medium", "Decodes base64 payloads."],
-  [/(npmrc|\.ssh|id_rsa|AWS_SECRET|GITHUB_TOKEN|NPM_TOKEN|process\.env)/i, "credential-access", "high", "References credentials, tokens, or sensitive local paths."],
-  [/(https?:\/\/|fetch\(|XMLHttpRequest)/i, "network-access", "medium", "Performs network access during package code or scripts."],
+];
+
+// Patterns only checked when the scope is a lifecycle script (not generic source files).
+const PATTERNS_SCRIPTS_ONLY: Array<[RegExp, string, Risk, string]> = [
+  [/(require\(["']child_process["']\)|from ["']node:child_process["']|execSync\(|spawnSync\(|eval\(|new Function\()/, "dynamic-execution", "medium", "Uses dynamic process or code execution."],
+  [/(https?:\/\/|fetch\(|XMLHttpRequest)/i, "network-access", "medium", "Performs network access in a lifecycle script."],
+  [/process\.env/i, "env-access", "medium", "Reads process environment variables in a lifecycle script."],
 ];
 
 export async function scanNpm(spec: string): Promise<Report> {
@@ -36,9 +44,26 @@ export async function scanNpm(spec: string): Promise<Report> {
   const extracted = await extractTarball(artifactPath);
   const packageDir = await findPackageRoot(extracted);
   debug(`analyzing ${packageDir}`);
-  return analyzeDirectory(`${meta.name}@${meta.version}`, "npm", packageDir, tarball, artifactPath, {
+  const report = await analyzeDirectory(`${meta.name}@${meta.version}`, "npm", packageDir, tarball, artifactPath, {
     socket: await checkSocket(String(meta.name), String(meta.version)),
   });
+  const expectedIntegrity = meta.dist?.integrity ? String(meta.dist.integrity) : undefined;
+  if (expectedIntegrity) {
+    const ok = await verifyIntegrity(artifactPath, expectedIntegrity);
+    if (!ok) {
+      report.findings.unshift({
+        id: "artifact.integrity-mismatch",
+        title: "Tarball integrity mismatch",
+        severity: "high",
+        evidence: `Registry integrity: ${expectedIntegrity}; downloaded file does not match`,
+        recommendation: "Do not install. The downloaded tarball differs from the registry manifest — possible tampering or CDN corruption.",
+      });
+      report.summary.risk = "high";
+      report.summary.installAllowed = false;
+      report.summary.findingCount = report.findings.length;
+    }
+  }
+  return report;
 }
 
 export async function scanVsix(file: string): Promise<Report> {
@@ -134,7 +159,7 @@ function inspectPackageJson(pkg: Record<string, unknown>, kind: "npm" | "npm-sta
         recommendation: "Manually inspect the script and require agent review before installing.",
       });
     }
-    inspectText(`script.${name}`, script, findings);
+    inspectText(`script.${name}`, script, findings, true);
   }
 
   const bins = pkg.bin;
@@ -199,12 +224,31 @@ async function inspectFiles(dir: string, findings: Finding[]) {
     if (rel === "package.json") continue;
     if (!/\.(js|cjs|mjs|ts|sh|ps1|cmd|node)$/i.test(file) || s.size > 300_000) continue;
     const text = await Bun.file(file).text().catch(() => "");
-    inspectText(`file.${rel}`, stripComments(text).slice(0, 300_000), findings);
+    const stripped = stripComments(text).slice(0, 300_000);
+    if (isMinified(stripped)) {
+      findings.push({
+        id: `file.${rel}.minified`,
+        title: "Minified or bundled file",
+        severity: "low",
+        evidence: `${rel} appears minified (average line length > 250 chars); pattern scanning skipped`,
+        recommendation: "Review the unminified source if available before installing.",
+      });
+      continue;
+    }
+    inspectText(`file.${rel}`, stripped, findings, false);
   }
 }
 
-function inspectText(scope: string, text: string, findings: Finding[]) {
-  for (const [pattern, id, severity, title] of SUSPICIOUS_PATTERNS) {
+function isMinified(text: string): boolean {
+  const lines = text.split("\n").filter((l) => l.trim().length > 0).slice(0, 20);
+  if (lines.length < 3) return false;
+  const avg = lines.reduce((sum, l) => sum + l.length, 0) / lines.length;
+  return avg > 250;
+}
+
+function inspectText(scope: string, text: string, findings: Finding[], isScript: boolean) {
+  const patterns = isScript ? [...PATTERNS_ALL, ...PATTERNS_SCRIPTS_ONLY] : PATTERNS_ALL;
+  for (const [pattern, id, severity, title] of patterns) {
     const match = text.match(pattern);
     if (!match) continue;
     findings.push({
@@ -242,7 +286,30 @@ async function artifactInfo(path: string, source: string) {
   };
 }
 
+async function verifyIntegrity(path: string, expected: string): Promise<boolean> {
+  if (!expected.startsWith("sha512-")) return true;
+  const expectedB64 = expected.slice("sha512-".length);
+  const bytes = Buffer.from(await Bun.file(path).arrayBuffer());
+  const actual = createHash("sha512").update(bytes).digest("base64");
+  return actual === expectedB64;
+}
+
 export async function resolveNpm(spec: string): Promise<Record<string, any>> {
+  // Try npm view first — it handles workspace:, git deps, dist-tags, and all semver ranges.
+  if (await commandExists("npm")) {
+    try {
+      const proc = Bun.spawn(["npm", "view", spec, "--json"], { stdout: "pipe", stderr: "ignore" });
+      const text = await new Response(proc.stdout).text();
+      const code = await proc.exited;
+      if (code === 0 && text.trim()) {
+        const data = JSON.parse(text) as Record<string, any>;
+        if (data.name && data.version && data.dist?.tarball) return data;
+      }
+    } catch {
+      // fall through to direct registry lookup
+    }
+  }
+  // Direct registry HTTP fallback (no npm required).
   const { name, version } = parsePackageSpec(spec);
   const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(name).replace("%40", "@")}`);
   if (!res.ok) throw new Error(`Registry lookup failed for ${name}: ${res.status}`);

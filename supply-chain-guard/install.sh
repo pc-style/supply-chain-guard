@@ -80,6 +80,20 @@ fi
 echo
 echo "Installed: $BIN_PATH"
 echo
+
+# Warn if the binary directory is not on PATH.
+case ":${PATH}:" in
+  *":${BIN_DIR}:"*)
+    ;;
+  *)
+    echo "WARNING: $BIN_DIR is not on your PATH."
+    echo "Add the following line to your shell profile (~/.bashrc, ~/.zshrc, or ~/.profile):"
+    echo "  export PATH=\"$BIN_DIR:\$PATH\""
+    echo "Then reload your shell or run: export PATH=\"$BIN_DIR:\$PATH\""
+    echo
+    ;;
+esac
+
 echo "Add this to your shell profile to guard bun/npm/pnpm/yarn/code commands:"
 echo '  eval "$(scguard shell-hook)"'
 echo
