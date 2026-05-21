@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_URL="${SCGUARD_REPO_URL:-https://github.com/pc-style/supply-chain-guard.git}"
+INSTALL_DIR="${SCGUARD_INSTALL_DIR:-$HOME/.local/share/supply-chain-guard}"
+BIN_DIR="${SCGUARD_BIN_DIR:-$HOME/.local/bin}"
+BIN_PATH="$BIN_DIR/scguard"
+CONFIG_DIR="${SCGUARD_CONFIG_DIR:-$HOME/.config/supply-chain-guard}"
+ENV_PATH="$CONFIG_DIR/env"
+
+if ! command -v bun >/dev/null 2>&1; then
+  echo "bun is required. Install Bun first: https://bun.sh" >&2
+  exit 1
+fi
+
+if ! command -v git >/dev/null 2>&1; then
+  echo "git is required." >&2
+  exit 1
+fi
+
+mkdir -p "$BIN_DIR"
+mkdir -p "$CONFIG_DIR"
+
+if [ -d "$INSTALL_DIR/.git" ]; then
+  echo "Updating Supply Chain Guard in $INSTALL_DIR"
+  git -C "$INSTALL_DIR" pull --ff-only
+else
+  echo "Installing Supply Chain Guard into $INSTALL_DIR"
+  rm -rf "$INSTALL_DIR"
+  git clone "$REPO_URL" "$INSTALL_DIR"
+fi
+
+cd "$INSTALL_DIR"
+bun install
+chmod +x src/cli.ts
+
+echo
+echo "Socket API token setup"
+echo "Create a token here: https://socket.dev/dashboard/settings/api-tokens"
+echo "Recommended minimum scope for current package score lookup: packages:list"
+echo "Optional future active-incident feed scope: threat-feed:list"
+printf "Paste Socket API token, or press Enter to skip: "
+IFS= read -r SOCKET_TOKEN_INPUT || true
+
+if [ -n "$SOCKET_TOKEN_INPUT" ]; then
+  umask 077
+  cat > "$ENV_PATH" <<EOF
+export SOCKET_API_KEY="$SOCKET_TOKEN_INPUT"
+EOF
+  echo "Saved Socket token env to $ENV_PATH"
+elif [ ! -f "$ENV_PATH" ]; then
+  umask 077
+  cat > "$ENV_PATH" <<EOF
+# Optional Socket token for API-backed package scoring.
+# Create one at https://socket.dev/dashboard/settings/api-tokens
+# Recommended minimum scope: packages:list
+# export SOCKET_API_KEY="..."
+EOF
+fi
+
+cat > "$BIN_PATH" <<EOF
+#!/usr/bin/env bash
+[ -f "$ENV_PATH" ] && source "$ENV_PATH"
+exec bun run "$INSTALL_DIR/src/cli.ts" "\$@"
+EOF
+chmod +x "$BIN_PATH"
+
+echo
+echo "Installed: $BIN_PATH"
+echo
+echo "Add this to your shell profile to guard bun/npm/pnpm/yarn/code commands:"
+echo "  eval \"\\\$(scguard shell-hook)\""
+echo
+echo "Or activate it for this terminal now:"
+echo "  eval \"\\\$(scguard shell-hook)\""

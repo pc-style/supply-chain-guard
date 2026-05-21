@@ -1,0 +1,3 @@
+.scguard/
+node_modules/
+*.tgz

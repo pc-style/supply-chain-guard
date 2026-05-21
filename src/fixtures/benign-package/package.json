@@ -1,0 +1,5 @@
+{
+  "name": "benign-package",
+  "version": "1.0.0",
+  "description": "Fixture package with no install hooks."
+}

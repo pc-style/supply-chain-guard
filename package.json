@@ -1,0 +1,16 @@
+{
+  "name": "supply-chain-guard",
+  "version": "0.1.0",
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "bin": {
+    "scguard": "./src/cli.ts"
+  },
+  "private": true,
+  "scripts": {
+    "scguard": "bun run src/cli.ts",
+    "check": "bun run src/cli.ts --help && bun run src/cli.ts self-test"
+  },
+  "type": "module"
+}
