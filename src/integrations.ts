@@ -107,7 +107,8 @@ export async function runAgentReview(report: Report, reportPath: string, agent: 
     new Response(proc.stderr).text(),
     proc.exited,
   ]);
-  const output = [stdout, stderr && `\n--- stderr ---\n${stderr}`].filter(Boolean).join("");
+  const cleanStderr = sanitizeAgentStderr(stderr);
+  const output = [stdout, cleanStderr && `\n--- stderr (sanitized) ---\n${cleanStderr}`].filter(Boolean).join("");
   await Bun.write(outputPath, output);
   const status = exitCode === 0 ? parseAgentDecision(output) : "error";
   return {
@@ -123,7 +124,8 @@ export function agentReviewPrompt(report: Report, reportPath: string, agent: Age
   return [
     `You are ${agent === "pi" ? "PI" : "Codex"} acting as a mandatory supply-chain security reviewer before installation.`,
     "",
-    "Analyze the JSON report below and cite the concrete findings and intelligence that drove your decision.",
+    "Analyze the compact normalized report summary below and cite the concrete findings and intelligence that drove your decision.",
+    "Do not approve solely because a package is popular. If minified files or skipped checks create a blind spot, require source/package inspection or manual-review unless the residual risk is explicitly justified.",
     "",
     "At the very end of your response — after all analysis — write your decision on its own line using",
     "exactly one of these three forms (no surrounding text, no quotation marks, no trailing words):",
@@ -147,9 +149,78 @@ export function agentReviewPrompt(report: Report, reportPath: string, agent: Age
     `Risk: ${report.summary.risk}`,
     "",
     "```json",
-    JSON.stringify(report, null, 2),
+    JSON.stringify(normalizedReviewSummary(report), null, 2),
     "```",
   ].join("\n");
+}
+
+function sanitizeAgentStderr(stderr: string) {
+  return stderr
+    .split("\n")
+    .filter((line) => !line.includes("```json") && !line.includes('"rawScore"') && !line.includes('"packageJson"'))
+    .join("\n")
+    .slice(0, 4000);
+}
+
+function normalizedReviewSummary(report: Report) {
+  const high = report.findings.filter((f) => f.severity === "high");
+  const medium = report.findings.filter((f) => f.severity === "medium");
+  const minified = report.findings.filter((f) => f.id.endsWith(".minified"));
+  return {
+    target: report.target,
+    kind: report.kind,
+    generatedAt: report.generatedAt,
+    decisionBasis: {
+      verdict: report.summary.installAllowed ? (report.summary.risk === "medium" ? "manual-risk-accepted" : "allow") : "block",
+      installAllowed: report.summary.installAllowed,
+      risk: report.summary.risk,
+      findingCount: report.summary.findingCount,
+      why: report.summary.installAllowed
+        ? `No high-severity findings (${medium.length} medium, ${report.findings.filter((f) => f.severity === "low").length} low).`
+        : `${high.length} high-severity finding(s) block install.`,
+      skippedChecks: minified.map((f) => `Minified file skipped by static scanner: ${f.id.replace(/^file\./, "").replace(/\.minified$/, "")}`),
+      nextAction: minified.length ? "Inspect original source/package contents for minified files." : "Use findings and intelligence to decide.",
+    },
+    artifact: report.artifact,
+    intelligence: normalizedIntelligence(report),
+    findings: report.findings.map((f) => ({
+      id: f.id,
+      severity: f.severity,
+      title: f.title,
+      evidence: f.evidence,
+      recommendation: f.recommendation,
+    })),
+  };
+}
+
+function normalizedIntelligence(report: Report) {
+  const socket = report.intelligence.socket;
+  return {
+    socket: socket && {
+      status: socket.status,
+      supplyChainRisk: socket.supplyChainRisk,
+      scale: "0=lowest risk, 1=highest risk; do not treat as approval confidence",
+      message: socket.message,
+      components: socketRiskComponents(socket.rawScore).slice(0, 12),
+    },
+    osv: {
+      status: report.intelligence.osv?.status ?? "missing",
+      vulnerabilityCount: report.intelligence.osv?.vulnerabilities?.length ?? 0,
+      vulnerabilities: report.intelligence.osv?.vulnerabilities?.slice(0, 10) ?? [],
+      message: report.intelligence.osv?.message,
+    },
+    npmSignature: report.intelligence.npmSignature,
+    typosquat: report.intelligence.typosquat,
+    packageAge: report.intelligence.packageAge,
+    activeAdvisory: report.intelligence.activeAdvisory,
+  };
+}
+
+function socketRiskComponents(rawScore: unknown) {
+  if (!rawScore || typeof rawScore !== "object") return [];
+  return Object.entries(rawScore as Record<string, unknown>)
+    .filter(([, value]) => typeof value === "number" || typeof value === "boolean" || typeof value === "string")
+    .map(([key, value]) => `${key}=${String(value)}`);
 }
 
 export function parseAgentDecision(output: string): AgentReview["status"] {

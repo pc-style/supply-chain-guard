@@ -1,5 +1,5 @@
-import { join } from "node:path";
-import { REPORT_DIR } from "./core";
+import { join, relative } from "node:path";
+import { REPORT_DIR, ROOT } from "./core";
 import type { AgentReview, Report } from "./core";
 import { resolveAgentMode, runAgentReviews, writeAgentPrompt } from "./integrations";
 import { buildCycloneDxSbom, sbomPathFor } from "./sbom";
@@ -107,35 +107,36 @@ function renderHumanReport(report: Report, jsonPath: string) {
 }
 
 export function renderMarkdown(report: Report, reportPath: string) {
+  const basis = decisionBasis(report);
   const lines = [
     `# Supply Chain Report: ${report.target}`,
     "",
+    "## Decision basis",
+    "",
+    `- Verdict: ${basis.verdict}`,
+    `- Why install is ${report.summary.installAllowed ? "allowed" : "blocked"}: ${basis.installReason}`,
+    `- Top risks: ${basis.topRisks.join("; ") || "none"}`,
+    `- Reassuring signals: ${basis.reassuringSignals.join("; ") || "none"}`,
+    `- Skipped/incomplete checks: ${basis.skippedChecks.join("; ") || "none"}`,
+    `- Next action: ${basis.nextAction}`,
+    "",
+    "## Summary",
+    "",
     `- Kind: ${report.kind}`,
     `- Risk: ${report.summary.risk}`,
+    `- Findings: ${report.summary.findingCount}`,
     `- Install allowed: ${report.summary.installAllowed}`,
     `- Artifact: ${report.artifact.source}`,
     `- SHA-256: ${report.artifact.sha256}`,
-    `- Socket: ${report.intelligence.socket?.status ?? "not-applicable"}`,
-    `- OSV: ${report.intelligence.osv?.status ?? "not-applicable"}${
-      report.intelligence.osv?.vulnerabilities?.length
-        ? ` (${report.intelligence.osv.vulnerabilities.length} advisory)`
-        : ""
-    }`,
-    `- npm signature: ${report.intelligence.npmSignature?.status ?? "not-applicable"}`,
-    `- Typosquat: ${
-      report.intelligence.typosquat?.exactMatch
-        ? "exact-match"
-        : report.intelligence.typosquat?.suspiciousMatches?.length
-          ? `close: ${report.intelligence.typosquat.suspiciousMatches.map((m) => `${m.name}(${m.distance})`).join(", ")}`
-          : "no-match"
-    }`,
-    `- Package age: ${
-      report.intelligence.packageAge?.status === "checked"
-        ? `package=${report.intelligence.packageAge.packageAgeDays ?? "?"}d version=${report.intelligence.packageAge.versionAgeHours ?? "?"}h`
-        : (report.intelligence.packageAge?.status ?? "not-applicable")
-    }`,
-    `- Active advisory: ${report.intelligence.activeAdvisory?.active ?? false}`,
-    `- JSON: ${reportPath}`,
+    `- JSON: ${relative(ROOT, reportPath)}`,
+    "",
+    "## Intelligence",
+    "",
+    ...intelligenceLines(report),
+    "",
+    "## What was not checked",
+    "",
+    ...uncheckedLines(report),
     "",
     "## Findings",
     "",
@@ -150,6 +151,71 @@ export function renderMarkdown(report: Report, reportPath: string) {
     lines.push("");
   }
   return `${lines.join("\n")}\n`;
+}
+
+export function decisionBasis(report: Report) {
+  const high = report.findings.filter((f) => f.severity === "high");
+  const medium = report.findings.filter((f) => f.severity === "medium");
+  const minified = report.findings.filter((f) => f.id.endsWith(".minified"));
+  const verdict = report.summary.installAllowed ? (report.summary.risk === "medium" ? "manual-risk-accepted" : "allow") : "block";
+  return {
+    verdict,
+    installReason: report.summary.installAllowed
+      ? `no high-severity findings were produced (${medium.length} medium, ${report.findings.filter((f) => f.severity === "low").length} low)`
+      : `${high.length} high-severity finding(s) require blocking`,
+    topRisks: [...high, ...medium].slice(0, 5).map((f) => `${f.severity}:${f.id}`),
+    reassuringSignals: reassuringSignals(report),
+    skippedChecks: skippedChecks(report, minified),
+    nextAction: minified.length > 0
+      ? "Inspect original source/package contents for minified files before relying on static scan results."
+      : report.summary.installAllowed ? "Proceed only if this risk profile is acceptable." : "Do not install until findings are resolved.",
+  };
+}
+
+function intelligenceLines(report: Report) {
+  const lines: string[] = [];
+  const socket = report.intelligence.socket;
+  if (socket) {
+    lines.push(`- Socket: ${socket.status}${typeof socket.supplyChainRisk === "number" ? `; supplyChainRisk=${socket.supplyChainRisk} (0=lowest risk, 1=highest risk; guard currently flags <=0.3 as suspicious legacy low-score threshold)` : ""}${socket.message ? `; ${socket.message}` : ""}`);
+    const components = socketRiskComponents(socket.rawScore).slice(0, 8);
+    if (components.length) lines.push(`  - Socket components: ${components.join(", ")}`);
+  } else lines.push("- Socket: not-applicable");
+  const osv = report.intelligence.osv;
+  lines.push(`- OSV: ${osv?.status ?? "not-applicable"}; vulnerabilities=${osv?.vulnerabilities?.length ?? 0}`);
+  if (osv?.vulnerabilities?.length) lines.push(...osv.vulnerabilities.slice(0, 5).map((v) => `  - ${v.severity}: ${v.id}${v.summary ? ` — ${v.summary}` : ""}`));
+  lines.push(`- npm signature: ${report.intelligence.npmSignature?.status ?? "not-applicable"}${report.intelligence.npmSignature?.message ? `; ${report.intelligence.npmSignature.message}` : ""}`);
+  lines.push(`- Package age: ${report.intelligence.packageAge?.status === "checked" ? `package=${report.intelligence.packageAge.packageAgeDays ?? "?"}d; version=${report.intelligence.packageAge.versionAgeHours ?? "?"}h` : (report.intelligence.packageAge?.status ?? "not-applicable")}`);
+  lines.push(`- Active advisory: ${report.intelligence.activeAdvisory?.active ?? false}`);
+  return lines;
+}
+
+function uncheckedLines(report: Report) {
+  const minified = report.findings.filter((f) => f.id.endsWith(".minified"));
+  const lines = minified.map((f) => `- Static pattern scanning skipped for minified file: ${f.id.replace(/^file\./, "").replace(/\.minified$/, "")}. Coverage is incomplete until original source is inspected.`);
+  if (report.intelligence.socket?.status !== "checked") lines.push(`- Socket intelligence was not checked (${report.intelligence.socket?.status ?? "missing"}).`);
+  if (report.intelligence.osv?.status !== "checked") lines.push(`- OSV vulnerability lookup was not checked (${report.intelligence.osv?.status ?? "missing"}).`);
+  return lines.length ? lines : ["- No skipped checks recorded by this report."];
+}
+
+function reassuringSignals(report: Report) {
+  const signals: string[] = [];
+  if (report.intelligence.osv?.status === "checked" && !report.intelligence.osv.vulnerabilities?.length) signals.push("OSV returned 0 vulnerabilities");
+  if (report.intelligence.npmSignature?.status === "verified") signals.push("npm provenance signature verified");
+  if (report.intelligence.typosquat?.exactMatch) signals.push("package name exact-match in popularity baseline");
+  if (report.intelligence.packageAge?.status === "checked") signals.push(`package age ${report.intelligence.packageAge.packageAgeDays ?? "?"}d`);
+  return signals;
+}
+
+function skippedChecks(report: Report, minified = report.findings.filter((f) => f.id.endsWith(".minified"))) {
+  return uncheckedLines(report).filter((line) => !line.includes("No skipped checks")).map((line) => line.replace(/^- /, ""));
+}
+
+function socketRiskComponents(rawScore: unknown) {
+  if (!rawScore || typeof rawScore !== "object") return [];
+  const entries = Object.entries(rawScore as Record<string, unknown>);
+  return entries
+    .filter(([, value]) => typeof value === "number" || typeof value === "boolean" || typeof value === "string")
+    .map(([key, value]) => `${key}=${String(value)}`);
 }
 
 export async function maybeRunConfiguredAgentReview(report: Report, reportPath: string, args: string[], json: boolean, opts: EmitReportOptions = {}) {
