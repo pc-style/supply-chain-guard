@@ -38,8 +38,12 @@ export async function scanNpm(spec: string): Promise<Report> {
   const tarball = String(meta.dist.tarball);
   const safeName = meta.name.replaceAll("/", "_").replaceAll("@", "");
   const artifactPath = join(CACHE_DIR, `${safeName}-${meta.version}.tgz`);
-  debug(`downloading ${tarball}`);
-  await download(tarball, artifactPath);
+  if (await Bun.file(artifactPath).exists()) {
+    debug(`cache hit ${artifactPath}`);
+  } else {
+    debug(`downloading ${tarball}`);
+    await download(tarball, artifactPath);
+  }
   debug(`extracting ${artifactPath}`);
   const extracted = await extractTarball(artifactPath);
   const packageDir = await findPackageRoot(extracted);

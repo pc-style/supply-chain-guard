@@ -1,0 +1,166 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+
+export type LockfileKind = "npm" | "bun" | "pnpm" | "yarn";
+
+export interface LockfileEntry {
+  name: string;
+  version: string;
+}
+
+export interface DetectedLockfile {
+  kind: LockfileKind;
+  path: string;
+}
+
+const LOCKFILES: Array<{ file: string; kind: LockfileKind }> = [
+  { file: "bun.lock", kind: "bun" },
+  { file: "package-lock.json", kind: "npm" },
+  { file: "npm-shrinkwrap.json", kind: "npm" },
+  { file: "pnpm-lock.yaml", kind: "pnpm" },
+  { file: "yarn.lock", kind: "yarn" },
+];
+
+export function detectLockfile(dir: string): DetectedLockfile | null {
+  for (const { file, kind } of LOCKFILES) {
+    const path = join(dir, file);
+    if (existsSync(path)) return { kind, path };
+  }
+  return null;
+}
+
+export async function parseLockfile(detected: DetectedLockfile): Promise<LockfileEntry[]> {
+  const text = await Bun.file(detected.path).text();
+  switch (detected.kind) {
+    case "npm":  return parseNpm(text);
+    case "bun":  return parseBun(text);
+    case "pnpm": return parsePnpm(text);
+    case "yarn": return parseYarn(text);
+  }
+}
+
+function dedupe(entries: LockfileEntry[]): LockfileEntry[] {
+  const seen = new Map<string, LockfileEntry>();
+  for (const e of entries) {
+    if (!e.name || !e.version) continue;
+    if (e.name.startsWith(".") || e.version.startsWith("file:") || e.version.startsWith("link:") || e.version.startsWith("workspace:")) continue;
+    const key = `${e.name}@${e.version}`;
+    if (!seen.has(key)) seen.set(key, { name: e.name, version: e.version });
+  }
+  return [...seen.values()].sort((a, b) => {
+    const ka = `${a.name}@${a.version}`;
+    const kb = `${b.name}@${b.version}`;
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  });
+}
+
+// ── npm: package-lock.json / npm-shrinkwrap.json ──────────────────────────
+// lockfileVersion 2+ uses a `packages` map keyed by node_modules path.
+// lockfileVersion 1 uses a nested `dependencies` tree.
+export function parseNpm(text: string): LockfileEntry[] {
+  const data = JSON.parse(text) as Record<string, unknown>;
+  const out: LockfileEntry[] = [];
+  const packages = data.packages as Record<string, { name?: string; version?: string; resolved?: string; link?: boolean }> | undefined;
+  if (packages) {
+    for (const [path, info] of Object.entries(packages)) {
+      if (!path || path === "" || info?.link) continue;
+      const version = info?.version;
+      if (!version) continue;
+      const name = info.name ?? nameFromNodeModulesPath(path);
+      if (!name) continue;
+      out.push({ name, version });
+    }
+  }
+  const deps = data.dependencies as Record<string, { version?: string; dependencies?: any }> | undefined;
+  if (deps) walkNpmV1(deps, out);
+  return dedupe(out);
+}
+
+function nameFromNodeModulesPath(path: string): string | null {
+  const idx = path.lastIndexOf("node_modules/");
+  if (idx < 0) return null;
+  return path.slice(idx + "node_modules/".length);
+}
+
+function walkNpmV1(deps: Record<string, { version?: string; dependencies?: any }>, out: LockfileEntry[]) {
+  for (const [name, info] of Object.entries(deps)) {
+    if (info?.version) out.push({ name, version: info.version });
+    if (info?.dependencies) walkNpmV1(info.dependencies, out);
+  }
+}
+
+// ── bun.lock (text format, lockfileVersion 0/1) ───────────────────────────
+// Each entry in `packages` is keyed by package name and the value is an array
+// whose first element is `"name@version"`.
+export function parseBun(text: string): LockfileEntry[] {
+  const out: LockfileEntry[] = [];
+  const packagesIdx = text.indexOf('"packages":');
+  if (packagesIdx < 0) return out;
+  const rest = text.slice(packagesIdx);
+  // Match: "anything": [ "name@version", ...
+  const re = /"([^"\n]+)"\s*:\s*\[\s*"((?:@[^@"\/]+\/)?[^@"\/]+)@([^"\]]+)"/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(rest))) {
+    const name = m[2];
+    const version = m[3];
+    if (!isValidVersion(version)) continue;
+    out.push({ name, version });
+  }
+  return dedupe(out);
+}
+
+// ── pnpm-lock.yaml ────────────────────────────────────────────────────────
+// `packages:` block with keys like `/@scope/name@1.0.0:` (v5/v6) or
+// `name@1.0.0:` (v9+). Skip workspace/file/link entries.
+export function parsePnpm(text: string): LockfileEntry[] {
+  const out: LockfileEntry[] = [];
+  const lines = text.split("\n");
+  let inPackages = false;
+  for (const rawLine of lines) {
+    if (/^[a-zA-Z]/.test(rawLine)) {
+      inPackages = rawLine.startsWith("packages:");
+      continue;
+    }
+    if (!inPackages) continue;
+    const m = rawLine.match(/^\s{2}'?\/?((?:@[^@\/]+\/)?[^@\/]+)@([^:'\s]+)'?:\s*$/);
+    if (!m) continue;
+    const version = m[2];
+    if (!isValidVersion(version)) continue;
+    out.push({ name: m[1], version });
+  }
+  return dedupe(out);
+}
+
+// ── yarn.lock (v1 classic + berry) ────────────────────────────────────────
+// Entries start at column 0 with one or more comma-separated specs, then a
+// `version "x.y.z"` (v1) or `version: x.y.z` (berry) line in the block.
+export function parseYarn(text: string): LockfileEntry[] {
+  const out: LockfileEntry[] = [];
+  const blocks = text.split(/\n(?=\S)/);
+  for (const block of blocks) {
+    const firstLine = block.split("\n")[0];
+    if (!firstLine || firstLine.startsWith("#") || firstLine.startsWith("__metadata")) continue;
+    if (!firstLine.includes("@") || !firstLine.endsWith(":")) continue;
+    const header = firstLine.slice(0, -1);
+    const firstSpec = header.split(",")[0].trim().replace(/^"(.*)"$/, "$1");
+    const at = firstSpec.lastIndexOf("@");
+    if (at <= 0) continue;
+    const name = firstSpec.slice(0, at);
+    const range = firstSpec.slice(at + 1);
+    // Skip non-npm protocols (workspace:, file:, link:, git*, http*, npm:scope/x@...).
+    if (/^(workspace|file|link|git|github|https?|patch)[:+]/i.test(range)) continue;
+    const versionMatch = block.match(/\n\s+version[:\s]+"?([^"\n]+)"?/);
+    if (!versionMatch) continue;
+    const version = versionMatch[1].trim().replace(/^"|"$/g, "");
+    if (!isValidVersion(version)) continue;
+    out.push({ name, version });
+  }
+  return dedupe(out);
+}
+
+function isValidVersion(v: string): boolean {
+  // Reject workspace, file, link, git, http protocols — we can only fetch real npm tarballs.
+  if (!v) return false;
+  if (/^(workspace|file|link|git|github|https?|npm):/i.test(v)) return false;
+  return /^\d+\.\d+\.\d+/.test(v);
+}

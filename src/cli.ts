@@ -21,6 +21,7 @@ import {
   doctorCommand,
   guardCommand,
   reviewOrInstall,
+  scanLockfileCommand,
   selfTest,
   shellHook,
 } from "./commands";
@@ -92,6 +93,12 @@ async function main() {
 
   if (cmd === "clean") {
     await cleanCommand(args);
+    return;
+  }
+
+  if (cmd === "scan-lockfile") {
+    const summary = await scanLockfileCommand(args);
+    if (summary.blocked.length > 0) process.exit(2);
     return;
   }
 
@@ -172,6 +179,7 @@ async function help() {
   item("scguard version", "", "Print the installed version.");
 
   section("Advanced");
+  item("scguard scan-lockfile", "[dir]", "Scan every package in a lockfile (bun/npm/pnpm/yarn). Used by the shell hook for bare 'install'.");
   item("scguard scan-npm", "<package[@version]> [--json]", "Scan a published npm package directly.");
   item("scguard scan-stage", "<stage-id> [--json]", "Scan an npm staged-publish artifact.");
   item("scguard guard", "bun|npm|pnpm|yarn|code <args...>", "Wrap a package-manager command behind the gate.");
@@ -183,6 +191,7 @@ async function help() {
   env("SCGUARD_BYPASS=1", "Skip the guard for a single command.");
   env("SOCKET_API_KEY", "Enable Socket.dev intelligence on npm scans.");
   env("SCGUARD_ACTIVE_INCIDENT", "Require typed acknowledgement during an active advisory.");
+  env("SCGUARD_LOCKFILE_CONCURRENCY", "Parallel package scans for scan-lockfile (default 8).");
   console.log("");
 }
 

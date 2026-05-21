@@ -23,6 +23,8 @@ import { scanNpm, scanNpmStage, scanVsix } from "./analysis";
 import { resolveAgentMode, runAgentReviews } from "./integrations";
 import { blockOnFailedReview, emitReport } from "./reporting";
 import { c, header, style, withSpinner } from "./ui";
+import { detectLockfile, parseLockfile, type DetectedLockfile, type LockfileEntry } from "./lockfile";
+import type { Report } from "./core";
 
 export async function reviewOrInstall(args: string[], opts: { install: boolean }) {
   const cleanArgs = stripGuardOptions(args);
@@ -172,11 +174,21 @@ export async function guardCommand(args: string[]) {
   }
 
   const advisory = readActiveAdvisory();
+  const action = String(classification.action);
+  const isBareInstall = classification.specs.length === 0 && (action === "install" || action === "i" || action === "ci");
   const specs = classification.specs.length > 0
     ? classification.specs
-    : await inferSpecsForPackageOperation(String(classification.action));
+    : await inferSpecsForPackageOperation(action);
   console.error(`${c.amber("scguard", true)} ${c.gray(`${classification.action} detected:`)} ${c.white(`${command} ${realArgs.join(" ")}`)}`);
   console.error(`${c.amber("scguard", true)} ${c.gray("this command can execute lifecycle code from untrusted packages.")}`);
+
+  if (isBareInstall) {
+    const summary = await scanLockfile(process.cwd(), args.slice(1));
+    if (summary.blocked.length > 0) throw lockfileBlockingError(summary);
+    requireActiveIncidentAcceptance(advisory);
+    await run(command, realArgs);
+    return;
+  }
 
   if (specs.length > 0) {
     console.error(`${c.amber("scguard", true)} ${c.gray("staging analysis required for")} ${c.white(specs.join(", "))}`);
@@ -253,14 +265,118 @@ async function inferSpecsForPackageOperation(action: string) {
   if (action === "update" || action === "upgrade") {
     throw new Error("Broad package updates are blocked. Run the command with explicit package specs so each update can be staged and analyzed first.");
   }
-  if (action === "install" || action === "i" || action === "ci") {
-    throw new Error([
-      `Blocked bare '${action}': scguard cannot yet review the exact tarballs your lockfile resolves to.`,
-      `Use explicit specs ('npm install react', 'bun add lodash@4.17.21') so each package can be staged and analyzed.`,
-      `To bypass this guard for one command (not recommended): SCGUARD_BYPASS=1 <your command>`,
-    ].join("\n"));
-  }
   return [];
+}
+
+export interface LockfileScanSummary {
+  detected: DetectedLockfile;
+  totalPackages: number;
+  scanned: number;
+  failed: { name: string; version: string; error: string }[];
+  blocked: { name: string; version: string; reportPath: string }[];
+  warnings: { name: string; version: string; reportPath: string }[];
+}
+
+export async function scanLockfileCommand(args: string[]): Promise<LockfileScanSummary> {
+  const cwd = args.find((a) => !a.startsWith("--")) ?? process.cwd();
+  return scanLockfile(cwd, args);
+}
+
+export async function scanLockfile(cwd: string, args: string[] = []): Promise<LockfileScanSummary> {
+  const detected = detectLockfile(cwd);
+  if (!detected) {
+    throw new Error(`No lockfile found in ${cwd}. Expected one of: bun.lock, package-lock.json, pnpm-lock.yaml, yarn.lock.`);
+  }
+  const entries = await parseLockfile(detected);
+  if (entries.length === 0) {
+    throw new Error(`Parsed ${detected.path} but found no package entries.`);
+  }
+
+  console.log(header(`scguard scan-lockfile  ${c.dim(detected.kind)}`));
+  console.log(`  ${c.gray("lockfile:")} ${c.white(detected.path)}`);
+  console.log(`  ${c.gray("packages:")} ${c.white(String(entries.length))}`);
+
+  const concurrency = Math.max(1, Number(Bun.env.SCGUARD_LOCKFILE_CONCURRENCY ?? 8));
+  const summary: LockfileScanSummary = {
+    detected,
+    totalPackages: entries.length,
+    scanned: 0,
+    failed: [],
+    blocked: [],
+    warnings: [],
+  };
+
+  let cursor = 0;
+  let completed = 0;
+  const total = entries.length;
+
+  const writeProgress = () => {
+    if (!process.stderr.isTTY) return;
+    const bar = `[${completed}/${total}]`;
+    process.stderr.write(`\r  ${c.amber("scanning", true)} ${c.gray(bar)}     `);
+  };
+
+  async function worker() {
+    while (true) {
+      const i = cursor++;
+      if (i >= entries.length) return;
+      const entry = entries[i];
+      const spec = `${entry.name}@${entry.version}`;
+      try {
+        const report = await scanNpm(spec);
+        summary.scanned++;
+        const reportPath = await emitReport(report, false);
+        if (!report.summary.installAllowed) {
+          summary.blocked.push({ name: entry.name, version: entry.version, reportPath });
+        } else if (report.summary.risk === "medium") {
+          summary.warnings.push({ name: entry.name, version: entry.version, reportPath });
+        }
+      } catch (err) {
+        summary.failed.push({
+          name: entry.name,
+          version: entry.version,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        completed++;
+        writeProgress();
+      }
+    }
+  }
+
+  writeProgress();
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  if (process.stderr.isTTY) process.stderr.write("\n");
+
+  console.log("");
+  console.log(`  ${style.check()} ${c.green("scanned ", true)} ${c.white(String(summary.scanned))}/${c.white(String(total))}`);
+  if (summary.warnings.length > 0) {
+    console.log(`  ${c.amber("warn    ", true)} ${c.white(String(summary.warnings.length))} ${c.gray("medium-risk packages")}`);
+  }
+  if (summary.failed.length > 0) {
+    console.log(`  ${c.amber("skipped ", true)} ${c.white(String(summary.failed.length))} ${c.gray("packages could not be analyzed")}`);
+    for (const f of summary.failed.slice(0, 5)) {
+      console.log(`    ${c.dim(`- ${f.name}@${f.version}: ${f.error.split("\n")[0]}`)}`);
+    }
+    if (summary.failed.length > 5) console.log(`    ${c.dim(`... and ${summary.failed.length - 5} more`)}`);
+  }
+  if (summary.blocked.length > 0) {
+    console.log(`  ${c.red("blocked ", true)} ${c.white(String(summary.blocked.length))} ${c.gray("high-risk packages")}`);
+    for (const b of summary.blocked) {
+      console.log(`    ${c.red("-", true)} ${c.white(`${b.name}@${b.version}`)} ${c.dim(b.reportPath)}`);
+    }
+  }
+
+  return summary;
+}
+
+function lockfileBlockingError(summary: LockfileScanSummary): Error {
+  const lines = [
+    `Blocked install: ${summary.blocked.length} high-risk package(s) in ${summary.detected.path}.`,
+    ...summary.blocked.map((b) => `  - ${b.name}@${b.version}  ${b.reportPath}`),
+    `To bypass for one command (not recommended): SCGUARD_BYPASS=1 <your command>`,
+  ];
+  return new Error(lines.join("\n"));
 }
 
 export function classifyPackageCommand(command: string, args: string[]) {

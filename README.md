@@ -92,7 +92,7 @@ scguard config [--show] [--agent none|codex|pi|both]
 scguard shell-hook
 ```
 
-Advanced commands: `scguard scan-npm`, `scguard scan-stage`, `scguard guard`, `scguard agent-prompt`, `scguard agent-review`, `scguard self-test`.
+Advanced commands: `scguard scan-lockfile`, `scguard scan-npm`, `scguard scan-stage`, `scguard guard`, `scguard agent-prompt`, `scguard agent-review`, `scguard self-test`.
 
 `review` resolves the package tarball, downloads it to `.scguard/cache`, extracts it to `.scguard/work`, analyzes it, writes reports to `.scguard/reports`, and stops. Use `install` instead when you want the install to continue after the gate passes. `scguard add` is kept as a deprecated alias for `review`.
 
@@ -110,7 +110,16 @@ Recommended shell hook:
 eval "$(scguard shell-hook)"
 ```
 
-After that, normal commands such as `bun add lodash`, `pnpm add react`, `yarn add zod`, and `code --install-extension ./extension.vsix` go through the guard first. Bare `npm install`, `npm ci`, and `bun install` are blocked: scguard cannot yet verify the exact tarballs your lockfile would resolve to. Use explicit specs, or set `SCGUARD_BYPASS=1` for a single command if you really need to skip the guard.
+After that, normal commands such as `bun add lodash`, `pnpm add react`, `yarn add zod`, and `code --install-extension ./extension.vsix` go through the guard first. Bare `npm install`, `npm ci`, and `bun install` are routed through `scguard scan-lockfile`: every `name@version` pinned in `bun.lock` / `package-lock.json` / `pnpm-lock.yaml` / `yarn.lock` is downloaded into the local cache, analyzed in parallel, and any high-risk package blocks the install. Use `SCGUARD_BYPASS=1` for a single command if you need to skip the guard.
+
+You can also run it directly:
+
+```sh
+scguard scan-lockfile           # scans the lockfile in the current directory
+scguard scan-lockfile path/to/project
+```
+
+Tune parallelism with `SCGUARD_LOCKFILE_CONCURRENCY` (default `8`).
 
 For now, `code --install-extension publisher.name` is blocked because the VS Code CLI would download the extension before this tool can inspect it. Download the `.vsix`, scan it, then install the reviewed artifact.
 
