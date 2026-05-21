@@ -2,6 +2,16 @@ import { join } from "node:path";
 import { REPORT_DIR } from "./core";
 import type { AgentReview, Report } from "./core";
 import { resolveAgentMode, runAgentReviews, writeAgentPrompt } from "./integrations";
+import {
+  blockedLine,
+  c,
+  header,
+  meta,
+  okLine,
+  riskRow,
+  riskWord,
+  style,
+} from "./ui";
 
 export async function emitReport(report: Report, json: boolean) {
   const base = report.target.replace(/[^a-z0-9_.@-]+/gi, "_");
@@ -12,11 +22,51 @@ export async function emitReport(report: Report, json: boolean) {
   await writeAgentPrompt(report, "pi", jsonPath);
   if (json) {
     console.log(JSON.stringify(report, null, 2));
-  } else {
-    console.log(`${report.target}: ${report.summary.risk} risk, ${report.summary.findingCount} findings`);
-    console.log(jsonPath);
+    return jsonPath;
   }
+  renderHumanReport(report, jsonPath);
   return jsonPath;
+}
+
+function renderHumanReport(report: Report, jsonPath: string) {
+  console.log(header("Supply Chain Guard Report"));
+  meta("target", report.target);
+  meta("kind", report.kind);
+  meta("risk", riskWord(report.summary.risk));
+  meta("findings", String(report.summary.findingCount));
+  meta("sha256", report.artifact.sha256.slice(0, 16) + (report.artifact.sha256.length > 16 ? "..." : ""));
+  if (report.intelligence.socket) meta("socket", report.intelligence.socket.status);
+
+  if (report.findings.length > 0) {
+    console.log(header("Findings"));
+    for (const finding of report.findings) {
+      console.log(
+        riskRow(
+          finding.severity,
+          finding.id,
+          finding.title,
+          finding.recommendation,
+        ),
+      );
+    }
+  } else {
+    console.log(header("Findings"));
+    okLine("no findings");
+  }
+
+  console.log("");
+  if (report.summary.installAllowed) {
+    okLine(
+      `${report.target}: ${report.summary.risk} risk, ${report.summary.findingCount} finding(s) - install allowed.`,
+    );
+  } else {
+    blockedLine(
+      "install blocked.",
+      `${report.findings.filter((f) => f.severity === "high").length} high-risk issue(s) found.`,
+    );
+  }
+  console.log(`  ${c.dim("json")} ${c.gray(jsonPath)}`);
+  console.log(`  ${c.dim("md  ")} ${c.gray(jsonPath.replace(/\.json$/, ".md"))}`);
 }
 
 export function renderMarkdown(report: Report, reportPath: string) {

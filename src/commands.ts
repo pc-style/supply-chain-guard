@@ -22,6 +22,7 @@ import type { AgentMode } from "./core";
 import { scanNpm, scanNpmStage, scanVsix } from "./analysis";
 import { resolveAgentMode, runAgentReviews } from "./integrations";
 import { blockOnFailedReview, emitReport } from "./reporting";
+import { c, header, style, withSpinner } from "./ui";
 
 export async function reviewOrInstall(args: string[], opts: { install: boolean }) {
   const cleanArgs = stripGuardOptions(args);
@@ -33,7 +34,10 @@ export async function reviewOrInstall(args: string[], opts: { install: boolean }
   const agentMode = await resolveAgentMode(args);
   const passed: string[] = [];
   for (const spec of specs) {
-    const report = await scanNpm(spec);
+    const report = await withSpinner(
+      `Resolving graph and simulating install for ${spec}...`,
+      () => scanNpm(spec),
+    );
     let reportPath = await emitReport(report, false);
     if (!report.summary.installAllowed) {
       throw new Error([
@@ -59,18 +63,14 @@ export async function reviewOrInstall(args: string[], opts: { install: boolean }
 
 function printNextSteps(spec: string, reportPath: string, willInstall: boolean) {
   const md = reportPath.replace(/\.json$/, ".md");
-  console.log("");
-  console.log(`Report for ${spec}:`);
-  console.log(`  Markdown: ${md}`);
-  console.log(`  JSON:     ${reportPath}`);
+  console.log(header(`Next steps  ${c.dim(spec)}`));
   if (willInstall) {
-    console.log(`Next: installing now.`);
+    console.log(`${style.ok()}  ${c.gray("gate passed - installing now")}`);
   } else {
-    console.log("Next:");
-    console.log(`  Inspect the Markdown report, then:`);
-    console.log(`    scguard install ${spec}`);
-    console.log(`  Or request a deeper agent review:`);
-    console.log(`    scguard agent-review ${reportPath} --agent codex`);
+    console.log(`  ${c.gray("Inspect the report, then:")}`);
+    console.log(`    ${c.amber("$", true)} ${c.white(`scguard install ${spec}`)}`);
+    console.log(`  ${c.gray("Or request a deeper agent review:")}`);
+    console.log(`    ${c.amber("$", true)} ${c.white(`scguard agent-review ${reportPath} --agent codex`)}`);
   }
   console.log("");
 }
@@ -96,15 +96,20 @@ export async function doctorCommand() {
   checks.push({ name: `project root`, ok: true, detail: ROOT });
   checks.push({ name: `reports directory`, ok: true, detail: REPORT_DIR });
 
+  console.log(header("scguard doctor"));
   let allOk = true;
-  for (const c of checks) {
-    const marker = c.ok ? "[ok]   " : "[warn] ";
-    if (!c.ok) allOk = false;
-    console.log(`${marker}${c.name.padEnd(28)} ${c.detail}`);
+  for (const check of checks) {
+    const marker = check.ok
+      ? `${style.check()} ${c.green("ok  ", true)}`
+      : `${style.cross()} ${c.amber("warn", true)}`;
+    if (!check.ok) allOk = false;
+    console.log(`  ${marker}  ${c.white(check.name.padEnd(28))} ${c.dim(check.detail)}`);
   }
-  if (!allOk) {
-    console.log("");
-    console.log("Some checks failed. Fix the items above for the smoothest experience.");
+  console.log("");
+  if (allOk) {
+    console.log(`${style.ok()}  ${c.gray("all checks passed.")}`);
+  } else {
+    console.log(`${c.amber("note", true)} ${c.gray("some checks failed. fix the items above for the smoothest experience.")}`);
   }
 }
 
@@ -120,10 +125,11 @@ export async function cleanCommand(args: string[]) {
   if (reports) targets.push(["reports", REPORT_DIR]);
   if (cache) targets.push(["cache", CACHE_DIR]);
   if (work) targets.push(["work", WORK_DIR]);
+  console.log(header("scguard clean"));
   for (const [label, dir] of targets) {
     await rm(dir, { recursive: true, force: true });
     await mkdir(dir, { recursive: true });
-    console.log(`Cleared ${label}: ${dir}`);
+    console.log(`${style.check()} ${c.green("cleared", true)}  ${c.white(label.padEnd(8))} ${c.dim(dir)}`);
   }
 }
 
@@ -156,13 +162,16 @@ export async function guardCommand(args: string[]) {
   const specs = classification.specs.length > 0
     ? classification.specs
     : await inferSpecsForPackageOperation(String(classification.action));
-  console.error(`scguard: ${classification.action} detected: ${command} ${realArgs.join(" ")}`);
-  console.error("scguard: this command can execute lifecycle code from untrusted packages.");
+  console.error(`${c.amber("scguard", true)} ${c.gray(`${classification.action} detected:`)} ${c.white(`${command} ${realArgs.join(" ")}`)}`);
+  console.error(`${c.amber("scguard", true)} ${c.gray("this command can execute lifecycle code from untrusted packages.")}`);
 
   if (specs.length > 0) {
-    console.error(`scguard: staging analysis required for ${specs.join(", ")}`);
+    console.error(`${c.amber("scguard", true)} ${c.gray("staging analysis required for")} ${c.white(specs.join(", "))}`);
     for (const spec of specs) {
-      const report = await scanNpm(spec);
+      const report = await withSpinner(
+        `Resolving graph and simulating install for ${spec}...`,
+        () => scanNpm(spec),
+      );
       let reportPath = await emitReport(report, false);
       if (!report.summary.installAllowed) {
         throw new Error(`Blocked ${spec}: high-risk findings found. See ${reportPath}`);
@@ -350,13 +359,13 @@ export async function configCommand(args: string[]) {
     const config = await readConfig();
     config.agentReview = normalizeAgentMode(explicit);
     await writeConfig(config);
-    console.log(`Saved default agent review: ${config.agentReview}`);
+    console.log(`${style.check()} ${c.green("saved", true)} ${c.gray("default agent review:")} ${c.amber(config.agentReview, true)}`);
     return;
   }
   const config = await readConfig();
   config.agentReview = await agentConfigTui(config.agentReview);
   await writeConfig(config);
-  console.log(`Saved default agent review: ${config.agentReview}`);
+  console.log(`${style.check()} ${c.green("saved", true)} ${c.gray("default agent review:")} ${c.amber(config.agentReview, true)}`);
 }
 
 async function agentConfigTui(current: AgentMode): Promise<AgentMode> {
@@ -377,13 +386,16 @@ async function agentConfigTui(current: AgentMode): Promise<AgentMode> {
 }
 
 function renderAgentConfigMenu(options: Array<{ value: AgentMode; label: string; detail: string }>, current: AgentMode) {
-  process.stdout.write("Supply Chain Guard Config\n\n");
-  process.stdout.write("Choose default agent review for scans and install gates.\n");
-  process.stdout.write(`Current: ${current}\n\n`);
+  process.stdout.write(`${header("Supply Chain Guard Config")}\n`);
+  process.stdout.write(`${c.gray("Choose default agent review for scans and install gates.")}\n`);
+  process.stdout.write(`${c.dim("current:")} ${c.amber(current, true)}\n\n`);
   options.forEach((option, optionIndex) => {
-    const pointer = option.value === current ? "*" : " ";
-    process.stdout.write(`${pointer} ${optionIndex + 1}. ${option.label}\n`);
-    process.stdout.write(`   ${option.detail}\n`);
+    const active = option.value === current;
+    const pointer = active ? c.amber("\u276f", true) : c.dim(" ");
+    const num = active ? c.amber(String(optionIndex + 1), true) : c.gray(String(optionIndex + 1));
+    const label = active ? c.amber(option.label, true) : c.white(option.label);
+    process.stdout.write(`${pointer} ${num}. ${label}\n`);
+    process.stdout.write(`   ${c.dim(option.detail)}\n`);
   });
   process.stdout.write("\n");
 }
@@ -393,5 +405,5 @@ export async function selfTest() {
   const fixtures = join(ROOT, "src", "fixtures", "benign-package");
   const report = await analyzeDirectory("fixture", "npm", fixtures, "local-fixture");
   if (report.summary.risk !== "low") throw new Error("self-test expected low risk fixture");
-  console.log("self-test passed");
+  console.log(`${style.ok()}  ${c.gray("self-test passed")}`);
 }
