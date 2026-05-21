@@ -25,6 +25,20 @@ import { blockOnFailedReview, emitReport } from "./reporting";
 import { c, header, style, withSpinner } from "./ui";
 import { detectLockfile, parseLockfile, type DetectedLockfile, type LockfileEntry } from "./lockfile";
 import type { Report } from "./core";
+import { buildInstallCommand, detectPackageManager } from "./pm";
+import { isOfflineMode, OFFLINE_ENV } from "./offline";
+
+// Re-export so other modules (and the main agent's integrations.ts) can import
+// the offline helper through a single, stable path if they prefer.
+export { isOfflineMode, OFFLINE_ENV };
+
+/**
+ * `isOffline` mirrors `isOfflineMode` but with a name matching the task spec.
+ * Callers should prefer `isOfflineMode` from `./offline` for new code.
+ */
+export function isOffline(args: string[] = []): boolean {
+  return isOfflineMode(args);
+}
 
 export async function reviewOrInstall(args: string[], opts: { install: boolean }) {
   const cleanArgs = stripGuardOptions(args);
@@ -34,13 +48,15 @@ export async function reviewOrInstall(args: string[], opts: { install: boolean }
   }
   const dev = cleanArgs.includes("--dev") || cleanArgs.includes("-d");
   const agentMode = await resolveAgentMode(args);
+  const sbom = args.includes("--sbom");
+  const emitOpts = { sbom };
   const passed: string[] = [];
   for (const spec of specs) {
     const report = await withSpinner(
       `Resolving graph and simulating install for ${spec}...`,
       () => scanNpm(spec),
     );
-    let reportPath = await emitReport(report, false);
+    let reportPath = await emitReport(report, false, emitOpts);
     if (!report.summary.installAllowed) {
       throw new Error([
         `Blocked ${spec}: high-risk findings.`,
@@ -52,7 +68,7 @@ export async function reviewOrInstall(args: string[], opts: { install: boolean }
     if (agentMode.length > 0) {
       const reviews = await runAgentReviews(report, reportPath, agentMode);
       report.agentReviews = reviews;
-      reportPath = await emitReport(report, false);
+      reportPath = await emitReport(report, false, emitOpts);
       blockOnFailedReview(spec, reviews);
     }
     printNextSteps(spec, reportPath, opts.install);
@@ -60,7 +76,18 @@ export async function reviewOrInstall(args: string[], opts: { install: boolean }
   }
   if (!opts.install) return;
   requireActiveIncidentAcceptance();
-  await run("bun", ["add", ...(dev ? ["--dev"] : []), ...passed]);
+  const detected = detectPackageManager(process.cwd(), args);
+  if (detected.source === "default") {
+    console.error(
+      `${c.amber("scguard", true)} ${c.gray("no lockfile detected; defaulting to")} ${c.white("bun")}. ${c.dim("Override with --pm npm|pnpm|yarn|bun.")}`,
+    );
+  } else {
+    console.error(
+      `${c.amber("scguard", true)} ${c.gray(`using ${detected.pm} (${detected.source}: ${detected.detail})`)}`,
+    );
+  }
+  const installCmd = buildInstallCommand(detected.pm, passed, { dev });
+  await run(installCmd.cmd, installCmd.args);
 }
 
 function printNextSteps(spec: string, reportPath: string, willInstall: boolean) {
@@ -456,11 +483,14 @@ function extractSpecs(base: string, args: string[]) {
 export function stripGuardOptions(args: string[]) {
   const stripped: string[] = [];
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--agent") {
+    const arg = args[i];
+    if (arg === "--agent" || arg === "--pm") {
       i++;
       continue;
     }
-    stripped.push(args[i]);
+    if (arg.startsWith("--agent=") || arg.startsWith("--pm=")) continue;
+    if (arg === "--sbom" || arg === "--offline") continue;
+    stripped.push(arg);
   }
   return stripped;
 }
@@ -531,8 +561,24 @@ function renderAgentConfigMenu(options: Array<{ value: AgentMode; label: string;
 
 export async function selfTest() {
   const { analyzeDirectory } = await import("./analysis");
-  const fixtures = join(ROOT, "src", "fixtures", "benign-package");
-  const report = await analyzeDirectory("fixture", "npm", fixtures, "local-fixture");
-  if (report.summary.risk !== "low") throw new Error("self-test expected low risk fixture");
-  console.log(`${style.ok()}  ${c.gray("self-test passed")}`);
+  const { ensureLargeBinFixture } = await import("./fixtures-support");
+  await ensureLargeBinFixture();
+  const cases: Array<{ dir: string; expect: "low" | "medium" | "high" | "medium-or-high" }> = [
+    { dir: "benign-package", expect: "low" },
+    { dir: "malicious-postinstall", expect: "high" },
+    { dir: "credential-exfil", expect: "high" },
+    { dir: "encoded-payload", expect: "high" },
+    { dir: "large-bin", expect: "medium-or-high" },
+  ];
+  for (const tc of cases) {
+    const fixturePath = join(ROOT, "src", "fixtures", tc.dir);
+    const report = await analyzeDirectory(`fixture:${tc.dir}`, "npm", fixturePath, "local-fixture");
+    const ok = tc.expect === "medium-or-high"
+      ? report.summary.risk === "medium" || report.summary.risk === "high"
+      : report.summary.risk === tc.expect;
+    if (!ok) {
+      throw new Error(`self-test: fixture ${tc.dir} expected risk ${tc.expect}, got ${report.summary.risk}`);
+    }
+  }
+  console.log(`${style.ok()}  ${c.gray(`self-test passed (${cases.length} fixtures)`)}`);
 }

@@ -56,17 +56,19 @@ async function main() {
 
   if (cmd === "scan-npm") {
     const target = requireArg(args[0], "scan-npm requires a package spec");
+    const emitOpts = { sbom: args.includes("--sbom") };
     const report = await scanNpm(target);
-    const reportPath = await emitReport(report, args.includes("--json"));
-    await maybeRunConfiguredAgentReview(report, reportPath, args, args.includes("--json"));
+    const reportPath = await emitReport(report, args.includes("--json"), emitOpts);
+    await maybeRunConfiguredAgentReview(report, reportPath, args, args.includes("--json"), emitOpts);
     return;
   }
 
   if (cmd === "scan-stage") {
     const stageId = requireArg(args[0], "scan-stage requires an npm stage id");
+    const emitOpts = { sbom: args.includes("--sbom") };
     const report = await scanNpmStage(stageId);
-    const reportPath = await emitReport(report, args.includes("--json"));
-    await maybeRunConfiguredAgentReview(report, reportPath, args, args.includes("--json"));
+    const reportPath = await emitReport(report, args.includes("--json"), emitOpts);
+    await maybeRunConfiguredAgentReview(report, reportPath, args, args.includes("--json"), emitOpts);
     return;
   }
 
@@ -104,9 +106,10 @@ async function main() {
 
   if (cmd === "scan-vsix") {
     const file = requireArg(args[0], "scan-vsix requires a .vsix path");
+    const emitOpts = { sbom: args.includes("--sbom") };
     const report = await scanVsix(resolve(file));
-    const reportPath = await emitReport(report, args.includes("--json"));
-    await maybeRunConfiguredAgentReview(report, reportPath, args, args.includes("--json"));
+    const reportPath = await emitReport(report, args.includes("--json"), emitOpts);
+    await maybeRunConfiguredAgentReview(report, reportPath, args, args.includes("--json"), emitOpts);
     return;
   }
 
@@ -167,9 +170,9 @@ async function help() {
   console.log(banner(pkg.version));
   console.log("");
   section("Common");
-  item("scguard review", "<package[@version]> [--agent codex|pi|both]", "Download, stage, and analyze a package without installing it.");
-  item("scguard install", "<package[@version]> [--dev] [--agent codex|pi|both]", "Review, then install only after the gate (and any agent review) passes.");
-  item("scguard scan-vsix", "<extension.vsix> [--json]", "Analyze a downloaded VS Code extension artifact.");
+  item("scguard review", "<package[@version]> [--agent codex|pi|both] [--sbom] [--offline]", "Download, stage, and analyze a package without installing it.");
+  item("scguard install", "<package[@version]> [--dev] [--pm bun|npm|pnpm|yarn] [--agent codex|pi|both] [--sbom] [--offline]", "Review, then install only after the gate (and any agent review) passes. Detects the project's package manager from lockfiles unless --pm is set.");
+  item("scguard scan-vsix", "<extension.vsix> [--json] [--sbom]", "Analyze a downloaded VS Code extension artifact.");
   item("scguard doctor", "", "Check dependencies, PATH, shell hook, Socket token, and agent CLIs.");
   item("scguard clean", "[--reports] [--cache] [--work] [--all]", "Remove cached artifacts, working dirs, or report history.");
   item("scguard config", "[--show] [--agent none|codex|pi|both]", "Set the default agent-review policy.");
@@ -192,6 +195,7 @@ async function help() {
   env("SOCKET_API_KEY", "Enable Socket.dev intelligence on npm scans.");
   env("SCGUARD_ACTIVE_INCIDENT", "Require typed acknowledgement during an active advisory.");
   env("SCGUARD_LOCKFILE_CONCURRENCY", "Parallel package scans for scan-lockfile (default 8).");
+  env("SCGUARD_OFFLINE=1", "Disable all network calls (same as --offline).");
   console.log("");
 }
 

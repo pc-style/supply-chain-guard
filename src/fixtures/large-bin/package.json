@@ -1,0 +1,8 @@
+{
+  "name": "large-bin",
+  "version": "0.0.1",
+  "description": "Fixture: ships a bin entry plus an oversized JS file (generated on demand).",
+  "bin": {
+    "large-bin": "./bin/large.js"
+  }
+}

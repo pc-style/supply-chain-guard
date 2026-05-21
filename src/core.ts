@@ -26,6 +26,10 @@ export type Report = {
   intelligence: {
     socket?: SocketResult;
     activeAdvisory?: ActiveAdvisory;
+    osv?: OsvResult;
+    npmSignature?: NpmSignatureResult;
+    typosquat?: TyposquatResult;
+    packageAge?: PackageAgeResult;
   };
   packageJson?: Record<string, unknown>;
   summary: {
@@ -67,6 +71,44 @@ export type ActiveAdvisory = {
   source: "env";
   message: string;
   until?: string;
+};
+
+export type OsvVulnerability = {
+  id: string;
+  summary?: string;
+  severity: Risk;
+  references: string[];
+  aliases?: string[];
+};
+
+export type OsvResult = {
+  status: "checked" | "skipped" | "error";
+  vulnerabilities?: OsvVulnerability[];
+  message?: string;
+  url?: string;
+};
+
+export type NpmSignatureResult = {
+  status: "verified" | "no-signature" | "unverified" | "error" | "skipped";
+  keyid?: string;
+  message?: string;
+};
+
+export type TyposquatMatch = { name: string; distance: number };
+
+export type TyposquatResult = {
+  status: "checked" | "skipped";
+  exactMatch?: boolean;
+  suspiciousMatches?: TyposquatMatch[];
+};
+
+export type PackageAgeResult = {
+  status: "checked" | "skipped" | "error";
+  packageCreatedAt?: string;
+  versionPublishedAt?: string;
+  packageAgeDays?: number;
+  versionAgeHours?: number;
+  message?: string;
 };
 
 export function findProjectRoot(start: string): string {

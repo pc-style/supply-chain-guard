@@ -1,0 +1,6 @@
+{
+  "name": "reactt",
+  "version": "0.0.1",
+  "description": "Fixture: name is a typosquat of 'react' (extra trailing 't').",
+  "main": "index.js"
+}

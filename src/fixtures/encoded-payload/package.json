@@ -1,0 +1,9 @@
+{
+  "name": "encoded-payload",
+  "version": "0.0.1",
+  "description": "Fixture: postinstall decodes a base64 payload; index.js eval()s a dynamic string.",
+  "main": "index.js",
+  "scripts": {
+    "postinstall": "node -e \"eval(Buffer.from('Y29uc29sZS5sb2coJ3BheWxvYWQnKQ==', 'base64').toString())\""
+  }
+}

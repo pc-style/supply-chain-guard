@@ -13,7 +13,13 @@ import {
   walk,
 } from "./core";
 import type { Finding, Report, Risk } from "./core";
-import { checkSocket } from "./integrations";
+import {
+  checkOsv,
+  checkPackageAge,
+  checkSocket,
+  checkTyposquat,
+  verifyNpmSignatures,
+} from "./integrations";
 
 const INSTALL_SCRIPTS = new Set(["preinstall", "install", "postinstall", "prepare"]);
 
@@ -36,8 +42,17 @@ export async function scanNpm(spec: string): Promise<Report> {
   debug(`resolving ${spec}`);
   const meta = await resolveNpm(spec);
   const tarball = String(meta.dist.tarball);
-  const safeName = meta.name.replaceAll("/", "_").replaceAll("@", "");
-  const artifactPath = join(CACHE_DIR, `${safeName}-${meta.version}.tgz`);
+  const name = String(meta.name);
+  const version = String(meta.version);
+  const safeName = name.replaceAll("/", "_").replaceAll("@", "");
+  const artifactPath = join(CACHE_DIR, `${safeName}-${version}.tgz`);
+  // Fan out intelligence lookups in parallel with the (cached or fresh) tarball download.
+  const intelPromise = Promise.all([
+    checkSocket(name, version),
+    checkOsv(name, version),
+    checkPackageAge(name, version),
+    verifyNpmSignatures(name, version, meta.dist ?? {}),
+  ]);
   if (await Bun.file(artifactPath).exists()) {
     debug(`cache hit ${artifactPath}`);
   } else {
@@ -48,8 +63,14 @@ export async function scanNpm(spec: string): Promise<Report> {
   const extracted = await extractTarball(artifactPath);
   const packageDir = await findPackageRoot(extracted);
   debug(`analyzing ${packageDir}`);
-  const report = await analyzeDirectory(`${meta.name}@${meta.version}`, "npm", packageDir, tarball, artifactPath, {
-    socket: await checkSocket(String(meta.name), String(meta.version)),
+  const [socket, osv, packageAge, npmSignature] = await intelPromise;
+  const typosquat = checkTyposquat(name);
+  const report = await analyzeDirectory(`${name}@${version}`, "npm", packageDir, tarball, artifactPath, {
+    socket,
+    osv,
+    packageAge,
+    npmSignature,
+    typosquat,
   });
   const expectedIntegrity = meta.dist?.integrity ? String(meta.dist.integrity) : undefined;
   if (expectedIntegrity) {
@@ -84,8 +105,20 @@ export async function scanNpmStage(stageId: string): Promise<Report> {
   const pkg = await readJson<Record<string, unknown>>(join(packageDir, "package.json"));
   const name = String(pkg.name ?? "unknown");
   const version = String(pkg.version ?? "unknown");
+  const known = name !== "unknown" && version !== "unknown";
+  const [socket, osv, packageAge] = known
+    ? await Promise.all([
+        checkSocket(name, version),
+        checkOsv(name, version),
+        checkPackageAge(name, version),
+      ])
+    : [undefined, undefined, undefined];
+  const typosquat = known ? checkTyposquat(name) : undefined;
   return analyzeDirectory(`npm-stage:${stageId}:${name}@${version}`, "npm-stage", packageDir, `npm stage download ${stageId}`, artifactPath, {
-    socket: name !== "unknown" && version !== "unknown" ? await checkSocket(name, version) : undefined,
+    socket,
+    osv,
+    packageAge,
+    typosquat,
   });
 }
 
@@ -138,6 +171,88 @@ function inspectIntelligence(intelligence: Partial<Report["intelligence"]>, find
       });
     }
   }
+
+  // OSV / GHSA known-vulnerability findings
+  if (intelligence.osv?.status === "checked" && intelligence.osv.vulnerabilities?.length) {
+    for (const v of intelligence.osv.vulnerabilities) {
+      const aliases = v.aliases?.length ? ` (aliases: ${v.aliases.join(", ")})` : "";
+      findings.push({
+        id: `osv.${v.id}`,
+        title: `Known advisory: ${v.id}`,
+        severity: v.severity,
+        evidence: (v.summary ? `${v.summary}${aliases}` : `${v.id}${aliases}`).slice(0, 400),
+        recommendation: `Review the advisory at osv.dev/${v.id} and upgrade to a patched version before installing.`,
+      });
+    }
+  }
+
+  // npm registry signature verification
+  if (intelligence.npmSignature) {
+    const sig = intelligence.npmSignature;
+    if (sig.status === "no-signature") {
+      findings.push({
+        id: "npm.signature.missing",
+        title: "No npm registry signature on this version",
+        severity: "low",
+        evidence: sig.message ?? "dist.signatures was empty in the registry manifest.",
+        recommendation: "Older packages may lack signatures; a missing signature on a recent publish is unusual and worth a closer look.",
+      });
+    } else if (sig.status === "unverified") {
+      findings.push({
+        id: "npm.signature.invalid",
+        title: "npm registry signature failed verification",
+        severity: "high",
+        evidence: sig.message ?? "Signature did not validate against the npm public keys.",
+        recommendation: "Do not install. The tarball or manifest may have been tampered with on the CDN path.",
+      });
+    } else if (sig.status === "error") {
+      findings.push({
+        id: "npm.signature.error",
+        title: "Could not verify npm registry signature",
+        severity: "low",
+        evidence: sig.message ?? "Signature verification raised an error.",
+        recommendation: "Re-run with network access; if the failure persists, treat the package as unverified.",
+      });
+    }
+  }
+
+  // Typosquat / name-similarity
+  if (intelligence.typosquat?.suspiciousMatches?.length) {
+    const sample = intelligence.typosquat.suspiciousMatches
+      .map((m) => `${m.name} (distance=${m.distance})`)
+      .join(", ");
+    findings.push({
+      id: "name.typosquat",
+      title: "Package name closely resembles a popular package",
+      severity: "high",
+      evidence: `Close matches: ${sample}`,
+      recommendation: "Confirm you intended to install this exact name. Confused-deputy typosquats commonly imitate popular packages.",
+    });
+  }
+
+  // Package + version age signals
+  if (intelligence.packageAge?.status === "checked") {
+    const { packageAgeDays, versionAgeHours } = intelligence.packageAge;
+    if (typeof packageAgeDays === "number" && packageAgeDays >= 0 && packageAgeDays < 22) {
+      findings.push({
+        id: "package.new",
+        title: "Package was first published very recently",
+        severity: "medium",
+        evidence: `Package first published ${packageAgeDays} day(s) ago.`,
+        recommendation: "New packages carry elevated risk; verify the publisher, source repo, and intended use before installing.",
+      });
+    }
+    if (typeof versionAgeHours === "number" && versionAgeHours >= 0 && versionAgeHours < 24) {
+      findings.push({
+        id: "version.new",
+        title: "Version was published in the last 24 hours",
+        severity: "medium",
+        evidence: `Version published ${versionAgeHours} hour(s) ago.`,
+        recommendation: "Brand-new versions are a common vector for compromised maintainer accounts. Pause and verify the publish.",
+      });
+    }
+  }
+
   const advisory = readActiveAdvisory();
   if (advisory.active) {
     findings.push({

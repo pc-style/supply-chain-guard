@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/pc-style/supply-chain-guard/main/docs/report-schema.json",
+  "title": "Supply Chain Guard Report",
+  "description": "JSON schema for reports emitted by `scguard` under .scguard/reports/.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "target",
+    "kind",
+    "generatedAt",
+    "artifact",
+    "intelligence",
+    "summary",
+    "findings"
+  ],
+  "properties": {
+    "$schema": { "type": "string", "format": "uri" },
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "target": { "type": "string" },
+    "kind": { "type": "string", "enum": ["npm", "npm-stage", "vsix"] },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "artifact": {
+      "type": "object",
+      "required": ["source", "sha256", "bytes"],
+      "properties": {
+        "source": { "type": "string" },
+        "sha256": { "type": "string" },
+        "bytes": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "intelligence": {
+      "type": "object",
+      "properties": {
+        "socket": {
+          "type": "object",
+          "required": ["status"],
+          "properties": {
+            "status": { "type": "string", "enum": ["checked", "skipped", "error"] },
+            "package": { "type": "string" },
+            "version": { "type": "string" },
+            "url": { "type": "string" },
+            "supplyChainRisk": { "type": "number" },
+            "rawScore": {},
+            "message": { "type": "string" }
+          },
+          "additionalProperties": true
+        },
+        "activeAdvisory": {
+          "type": "object",
+          "required": ["active", "source", "message"],
+          "properties": {
+            "active": { "type": "boolean" },
+            "source": { "type": "string" },
+            "message": { "type": "string" },
+            "until": { "type": "string" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "packageJson": { "type": "object", "additionalProperties": true },
+    "summary": {
+      "type": "object",
+      "required": ["risk", "findingCount", "installAllowed"],
+      "properties": {
+        "risk": { "type": "string", "enum": ["low", "medium", "high"] },
+        "findingCount": { "type": "integer", "minimum": 0 },
+        "installAllowed": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "severity", "evidence", "recommendation"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "severity": { "type": "string", "enum": ["low", "medium", "high"] },
+          "evidence": { "type": "string" },
+          "recommendation": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "agentReviews": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["agent", "status", "outputPath", "exitCode", "summary"],
+        "properties": {
+          "agent": { "type": "string", "enum": ["codex", "pi"] },
+          "status": { "type": "string", "enum": ["approved", "rejected", "manual-review", "error"] },
+          "outputPath": { "type": "string" },
+          "exitCode": { "type": "integer" },
+          "summary": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": true
+}

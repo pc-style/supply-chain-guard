@@ -1,0 +1,8 @@
+{
+  "name": "credential-exfil",
+  "version": "0.0.1",
+  "description": "Fixture: postinstall script references SSH keys and npmrc.",
+  "scripts": {
+    "postinstall": "node -e \"const fs=require('fs'); fs.readFileSync(process.env.HOME + '/.ssh/id_rsa'); fs.readFileSync(process.env.HOME + '/.npmrc');\""
+  }
+}
