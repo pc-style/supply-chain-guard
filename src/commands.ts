@@ -49,12 +49,13 @@ export async function reviewOrInstall(args: string[], opts: { install: boolean }
   const dev = cleanArgs.includes("--dev") || cleanArgs.includes("-d");
   const agentMode = await resolveAgentMode(args);
   const sbom = args.includes("--sbom");
+  const offline = isOfflineMode(args);
   const emitOpts = { sbom };
   const passed: string[] = [];
   for (const spec of specs) {
     const report = await withSpinner(
       `Resolving graph and simulating install for ${spec}...`,
-      () => scanNpm(spec),
+      () => scanNpm(spec, { offline }),
     );
     let reportPath = await emitReport(report, false, emitOpts);
     if (!report.summary.installAllowed) {
@@ -219,10 +220,11 @@ export async function guardCommand(args: string[]) {
 
   if (specs.length > 0) {
     console.error(`${c.amber("scguard", true)} ${c.gray("staging analysis required for")} ${c.white(specs.join(", "))}`);
+    const offline = isOfflineMode(args);
     for (const spec of specs) {
       const report = await withSpinner(
         `Resolving graph and simulating install for ${spec}...`,
-        () => scanNpm(spec),
+        () => scanNpm(spec, { offline }),
       );
       let reportPath = await emitReport(report, false);
       if (!report.summary.installAllowed) {
@@ -272,7 +274,7 @@ async function guardNpmStage(command: string, args: string[], specs: string[]) {
   console.error(`scguard: npm staged publish approval detected: ${command} ${args.join(" ")}`);
   console.error("scguard: staged packages must be downloaded and analyzed before approval.");
   if (!stageId) throw new Error("Blocked npm stage approve: no stage id found.");
-  const report = await scanNpmStage(stageId);
+  const report = await scanNpmStage(stageId, { offline: isOfflineMode(args) });
   let reportPath = await emitReport(report, false);
   if (!report.summary.installAllowed) {
     throw new Error(`Blocked npm stage approve ${stageId}: high-risk findings found. See ${reportPath}`);
@@ -324,6 +326,7 @@ export async function scanLockfile(cwd: string, args: string[] = []): Promise<Lo
   console.log(`  ${c.gray("packages:")} ${c.white(String(entries.length))}`);
 
   const concurrency = Math.max(1, Number(Bun.env.SCGUARD_LOCKFILE_CONCURRENCY ?? 8));
+  const offline = isOfflineMode(args);
   const summary: LockfileScanSummary = {
     detected,
     totalPackages: entries.length,
@@ -350,7 +353,7 @@ export async function scanLockfile(cwd: string, args: string[] = []): Promise<Lo
       const entry = entries[i];
       const spec = `${entry.name}@${entry.version}`;
       try {
-        const report = await scanNpm(spec);
+        const report = await scanNpm(spec, { offline });
         summary.scanned++;
         const reportPath = await emitReport(report, false);
         if (!report.summary.installAllowed) {
@@ -489,7 +492,8 @@ export function stripGuardOptions(args: string[]) {
       continue;
     }
     if (arg.startsWith("--agent=") || arg.startsWith("--pm=")) continue;
-    if (arg === "--sbom" || arg === "--offline") continue;
+    // --sbom is scguard-only. --offline is passed through (bun/npm/pnpm/yarn all honour it).
+    if (arg === "--sbom") continue;
     stripped.push(arg);
   }
   return stripped;

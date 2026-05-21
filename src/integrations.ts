@@ -268,10 +268,45 @@ function classifyOsvSeverity(v: OsvRawVuln): Risk {
 }
 
 function parseCvssBaseScore(score: string): number | undefined {
-  // Sometimes OSV scores are bare numbers (e.g. "7.5"); usually they are CVSS vector strings.
+  // OSV severity scores are usually CVSS v3/v3.1 vector strings, occasionally bare numbers.
   const numericMatch = score.match(/^(\d+(?:\.\d+)?)$/);
   if (numericMatch) return Number(numericMatch[1]);
-  return undefined;
+  return computeCvssV3BaseScore(score);
+}
+
+// CVSS v3.0 / v3.1 base score, per First.org spec §7.1.
+export function computeCvssV3BaseScore(vector: string): number | undefined {
+  if (!/^CVSS:3\.[01]\//.test(vector)) return undefined;
+  const metrics: Record<string, string> = {};
+  for (const part of vector.split("/").slice(1)) {
+    const [k, v] = part.split(":");
+    if (k && v) metrics[k] = v;
+  }
+  const get = (k: string) => metrics[k];
+  const AV = ({ N: 0.85, A: 0.62, L: 0.55, P: 0.2 } as const)[get("AV") as "N" | "A" | "L" | "P"];
+  const AC = ({ L: 0.77, H: 0.44 } as const)[get("AC") as "L" | "H"];
+  const UI = ({ N: 0.85, R: 0.62 } as const)[get("UI") as "N" | "R"];
+  const S = get("S");
+  const PR_TABLE = S === "C"
+    ? ({ N: 0.85, L: 0.68, H: 0.5 } as const)
+    : ({ N: 0.85, L: 0.62, H: 0.27 } as const);
+  const PR = PR_TABLE[get("PR") as "N" | "L" | "H"];
+  const impactValue = (m: string) => ({ N: 0, L: 0.22, H: 0.56 } as const)[m as "N" | "L" | "H"];
+  const C = impactValue(get("C"));
+  const I = impactValue(get("I"));
+  const A = impactValue(get("A"));
+  if ([AV, AC, UI, PR, C, I, A].some((v) => v === undefined)) return undefined;
+  const iss = 1 - (1 - C!) * (1 - I!) * (1 - A!);
+  const impact = S === "C"
+    ? 7.52 * (iss - 0.029) - 3.25 * Math.pow(iss - 0.02, 15)
+    : 6.42 * iss;
+  if (impact <= 0) return 0;
+  const exploitability = 8.22 * AV! * AC! * PR! * UI!;
+  const raw = S === "C"
+    ? Math.min(1.08 * (impact + exploitability), 10)
+    : Math.min(impact + exploitability, 10);
+  // roundUp1: smallest number, specified to one decimal place, ≥ raw.
+  return Math.ceil(raw * 10) / 10;
 }
 
 // ---------------------------------------------------------------------------
@@ -283,7 +318,19 @@ let npmKeysCache: NpmKey[] | undefined;
 
 async function fetchNpmKeys(): Promise<NpmKey[]> {
   if (npmKeysCache) return npmKeysCache;
-  const res = await fetch("https://registry.npmjs.org/-/npm/v1/keys");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  let res: Response;
+  try {
+    res = await fetch("https://registry.npmjs.org/-/npm/v1/keys", { signal: controller.signal });
+  } catch (error) {
+    clearTimeout(timeout);
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("npm keys lookup timed out after 10s");
+    }
+    throw error;
+  }
+  clearTimeout(timeout);
   if (!res.ok) throw new Error(`npm keys lookup failed: HTTP ${res.status}`);
   const data = await res.json() as { keys?: NpmKey[] };
   if (!Array.isArray(data.keys) || data.keys.length === 0) {
@@ -291,6 +338,12 @@ async function fetchNpmKeys(): Promise<NpmKey[]> {
   }
   npmKeysCache = data.keys;
   return data.keys;
+}
+
+function isKeyUsable(key: NpmKey): boolean {
+  if (!key.expires) return true;
+  const expiresAt = Date.parse(key.expires);
+  return Number.isFinite(expiresAt) && expiresAt > Date.now();
 }
 
 function verifyEcdsaSignature(message: string, sigBase64: string, base64Key: string): boolean {
@@ -331,13 +384,13 @@ export async function verifyNpmSignatures(
       if (!sig.keyid || !sig.sig) {
         return { status: "error", message: "Malformed signature entry from registry." };
       }
-      const key = keys.find((k) => k.keyid === sig.keyid);
+      const key = keys.find((k) => k.keyid === sig.keyid && isKeyUsable(k));
       if (!key) {
-        return {
-          status: "unverified",
-          keyid: sig.keyid,
-          message: `Signing key ${sig.keyid} not found in the npm key registry.`,
-        };
+        const existing = keys.find((k) => k.keyid === sig.keyid);
+        const reason = existing
+          ? `Signing key ${sig.keyid} is expired (expires=${existing.expires}).`
+          : `Signing key ${sig.keyid} not found in the npm key registry.`;
+        return { status: "unverified", keyid: sig.keyid, message: reason };
       }
       const ok = verifyEcdsaSignature(message, sig.sig, key.key);
       if (!ok) {

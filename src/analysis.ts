@@ -38,7 +38,7 @@ const PATTERNS_SCRIPTS_ONLY: Array<[RegExp, string, Risk, string]> = [
   [/process\.env/i, "env-access", "medium", "Reads process environment variables in a lifecycle script."],
 ];
 
-export async function scanNpm(spec: string): Promise<Report> {
+export async function scanNpm(spec: string, options: { offline?: boolean } = {}): Promise<Report> {
   debug(`resolving ${spec}`);
   const meta = await resolveNpm(spec);
   const tarball = String(meta.dist.tarball);
@@ -46,12 +46,13 @@ export async function scanNpm(spec: string): Promise<Report> {
   const version = String(meta.version);
   const safeName = name.replaceAll("/", "_").replaceAll("@", "");
   const artifactPath = join(CACHE_DIR, `${safeName}-${version}.tgz`);
+  const offlineOpt = { offline: options.offline };
   // Fan out intelligence lookups in parallel with the (cached or fresh) tarball download.
   const intelPromise = Promise.all([
     checkSocket(name, version),
-    checkOsv(name, version),
-    checkPackageAge(name, version),
-    verifyNpmSignatures(name, version, meta.dist ?? {}),
+    checkOsv(name, version, offlineOpt),
+    checkPackageAge(name, version, offlineOpt),
+    verifyNpmSignatures(name, version, meta.dist ?? {}, offlineOpt),
   ]);
   if (await Bun.file(artifactPath).exists()) {
     debug(`cache hit ${artifactPath}`);
@@ -98,7 +99,7 @@ export async function scanVsix(file: string): Promise<Report> {
   return analyzeDirectory(basename(file), "vsix", extensionDir, file, file);
 }
 
-export async function scanNpmStage(stageId: string): Promise<Report> {
+export async function scanNpmStage(stageId: string, options: { offline?: boolean } = {}): Promise<Report> {
   const artifactPath = await downloadNpmStage(stageId);
   const extracted = await extractTarball(artifactPath);
   const packageDir = await findPackageRoot(extracted);
@@ -106,11 +107,12 @@ export async function scanNpmStage(stageId: string): Promise<Report> {
   const name = String(pkg.name ?? "unknown");
   const version = String(pkg.version ?? "unknown");
   const known = name !== "unknown" && version !== "unknown";
+  const offlineOpt = { offline: options.offline };
   const [socket, osv, packageAge] = known
     ? await Promise.all([
         checkSocket(name, version),
-        checkOsv(name, version),
-        checkPackageAge(name, version),
+        checkOsv(name, version, offlineOpt),
+        checkPackageAge(name, version, offlineOpt),
       ])
     : [undefined, undefined, undefined];
   const typosquat = known ? checkTyposquat(name) : undefined;

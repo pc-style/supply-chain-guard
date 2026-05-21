@@ -15,6 +15,7 @@ import {
   writeAgentPrompt,
 } from "./integrations";
 import { emitReport, maybeRunConfiguredAgentReview } from "./reporting";
+import { isOfflineMode } from "./offline";
 import {
   cleanCommand,
   configCommand,
@@ -57,7 +58,8 @@ async function main() {
   if (cmd === "scan-npm") {
     const target = requireArg(args[0], "scan-npm requires a package spec");
     const emitOpts = { sbom: args.includes("--sbom") };
-    const report = await scanNpm(target);
+    const offline = isOfflineMode(args);
+    const report = await scanNpm(target, { offline });
     const reportPath = await emitReport(report, args.includes("--json"), emitOpts);
     await maybeRunConfiguredAgentReview(report, reportPath, args, args.includes("--json"), emitOpts);
     return;
@@ -66,7 +68,8 @@ async function main() {
   if (cmd === "scan-stage") {
     const stageId = requireArg(args[0], "scan-stage requires an npm stage id");
     const emitOpts = { sbom: args.includes("--sbom") };
-    const report = await scanNpmStage(stageId);
+    const offline = isOfflineMode(args);
+    const report = await scanNpmStage(stageId, { offline });
     const reportPath = await emitReport(report, args.includes("--json"), emitOpts);
     await maybeRunConfiguredAgentReview(report, reportPath, args, args.includes("--json"), emitOpts);
     return;
