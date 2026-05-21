@@ -1,6 +1,8 @@
 {
   "name": "supply-chain-guard",
   "version": "0.1.0",
+  "description": "Local supply-chain install gate for npm packages and VS Code extensions with Socket, Codex, and PI review support.",
+  "license": "MIT",
   "devDependencies": {
     "@types/bun": "latest"
   },
@@ -10,7 +12,25 @@
   "private": true,
   "scripts": {
     "scguard": "bun run src/cli.ts",
-    "check": "bun run src/cli.ts --help && bun run src/cli.ts self-test"
+    "typecheck": "bunx tsc --noEmit",
+    "check": "bun run typecheck && bun run src/cli.ts --help && bun run src/cli.ts self-test"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pc-style/supply-chain-guard.git"
+  },
+  "homepage": "https://github.com/pc-style/supply-chain-guard#readme",
+  "bugs": {
+    "url": "https://github.com/pc-style/supply-chain-guard/issues"
+  },
+  "keywords": [
+    "supply-chain",
+    "npm",
+    "security",
+    "socket",
+    "codex",
+    "pi",
+    "vscode"
+  ],
   "type": "module"
 }

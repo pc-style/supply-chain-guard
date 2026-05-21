@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { mkdir, mkdtemp, readdir, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { basename, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { homedir } from "node:os";
 
 type Risk = "low" | "medium" | "high";
@@ -103,6 +103,12 @@ async function main() {
 
   if (!cmd || cmd === "--help" || cmd === "-h") {
     help();
+    return;
+  }
+
+  if (cmd === "--version" || cmd === "-v" || cmd === "version") {
+    const pkg = await readJson<{ version: string }>(join(dirname(CLI_ENTRY), "..", "package.json"));
+    console.log(pkg.version);
     return;
   }
 

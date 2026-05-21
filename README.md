@@ -2,6 +2,16 @@
 
 Local install gate for npm packages and VS Code extensions. It analyzes a package artifact before allowing an install, writes JSON/Markdown reports for programmatic review, and can run Codex or PI as a mandatory second-pass reviewer.
 
+This is a defensive local workflow tool, not a malware sandbox. Treat approvals as risk signals, not proof that a package is safe.
+
+## Requirements
+
+- Bun
+- Git, `tar`, and `unzip`
+- Optional: Socket API token with `packages:list`
+- Optional: `codex` and/or `pi` CLIs for agent review
+- Optional for npm staged publishing: npm CLI `11.15.0+` and Node `22.14.0+`
+
 ## Install Or Update
 
 ```sh
@@ -22,17 +32,17 @@ Recommended Socket scopes:
 ## Commands
 
 ```sh
-bun run scguard add <package[@version]> [--dev] [--approve]
-bun run scguard add <package[@version]> --agent codex|pi|both --approve
-bun run scguard scan-npm <package[@version]> [--json]
-bun run scguard scan-stage <stage-id> [--json]
-bun run scguard scan-vsix <path-to-extension.vsix> [--json]
-bun run scguard config
-bun run scguard config --show
-bun run scguard shell-hook
-bun run scguard guard bun|npm|pnpm|yarn|code <args...>
-bun run scguard agent-prompt <report.json> --agent codex|pi
-bun run scguard agent-review <report.json> --agent codex|pi|both
+scguard add <package[@version]> [--dev] [--approve]
+scguard add <package[@version]> --agent codex|pi|both --approve
+scguard scan-npm <package[@version]> [--json]
+scguard scan-stage <stage-id> [--json]
+scguard scan-vsix <path-to-extension.vsix> [--json]
+scguard config
+scguard config --show
+scguard shell-hook
+scguard guard bun|npm|pnpm|yarn|code <args...>
+scguard agent-prompt <report.json> --agent codex|pi
+scguard agent-review <report.json> --agent codex|pi|both
 ```
 
 `add` does not install by default. It resolves the package tarball, downloads it to `.scguard/cache`, extracts it to `.scguard/work`, analyzes it, writes reports to `.scguard/reports`, and stops. Add `--approve` to install after the analysis gate passes.
@@ -44,7 +54,7 @@ Run `scguard config` to choose the default agent review behavior for every scan 
 Recommended shell hook:
 
 ```sh
-eval "$(bun run scguard shell-hook)"
+eval "$(scguard shell-hook)"
 ```
 
 After that, habitual commands such as `bun add`, `npm install`, `pnpm update`, `yarn add`, and `code --install-extension ./extension.vsix` go through the guard first. The wrapper emits a weak warning for every package install/update operation because package managers and editor extensions can run untrusted code.
@@ -83,6 +93,15 @@ export SOCKET_API_KEY="..."
 ```
 
 The report records whether Socket was checked, skipped, or errored. If Socket reports elevated `supplyChainRisk`, the guard raises the report risk and can block the install.
+
+## Development
+
+```sh
+bun install
+bun run check
+```
+
+Generated cache, reports, tarballs, `node_modules`, and env files are ignored by git.
 
 ## Staging And Takedown Flow
 
