@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Supply Chain Guard">
+  <rect width="64" height="64" rx="14" fill="#0d0d0d"/>
+  <path d="M32 10 L52 17 V31 c0 12 -7.5 19.5 -20 24 C19.5 50.5 12 43 12 31 V17 Z"
+        fill="none" stroke="#fbbf24" stroke-width="3.5" stroke-linejoin="round"/>
+  <path d="M22 33 L29 40 L42 25"
+        fill="none" stroke="#fbbf24" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
