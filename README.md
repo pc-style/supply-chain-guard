@@ -1,8 +1,40 @@
 # Supply Chain Guard
 
-Local install gate for npm packages and VS Code extensions. It analyzes a package artifact before allowing an install, writes JSON/Markdown reports for programmatic review, and can run Codex or PI as a mandatory second-pass reviewer.
+Supply Chain Guard puts a local review step in front of npm packages and VS Code extensions. It downloads the artifact first, checks the files that usually matter during an install, writes JSON and Markdown reports, and can ask Codex or PI for a second review before anything lands in your project.
 
-This is a defensive local workflow tool, not a malware sandbox. Treat approvals as risk signals, not proof that a package is safe.
+It is meant for the moment right before you run `bun add`, `npm install`, or `code --install-extension`. It is not a malware sandbox, and an approval is not proof that a package is safe. It is a local tripwire for suspicious install behavior.
+
+## Demo
+
+The CLI is intentionally plain. `scguard --help` shows the install gate, scan, shell hook, config, and agent-review commands:
+
+![Supply Chain Guard help output](docs/screenshots/help.png)
+
+Scan a package before it is installed:
+
+![Supply Chain Guard scanning an npm package](docs/screenshots/scan-npm.png)
+
+Stage a package without installing it, then approve it when the report looks clean:
+
+![Supply Chain Guard withholding an install until approval](docs/screenshots/add-withheld.png)
+
+![Supply Chain Guard installing after approval](docs/screenshots/add-approved.png)
+
+Broad updates are blocked unless you name the packages to review:
+
+![Supply Chain Guard blocking a broad update](docs/screenshots/block-broad-update.png)
+
+VS Code extensions can be scanned from a local `.vsix` file:
+
+![Supply Chain Guard scanning a VS Code extension artifact](docs/screenshots/scan-vsix.png)
+
+Every run leaves JSON, Markdown, and agent-review prompts under `.scguard/reports`:
+
+![Supply Chain Guard generated reports](docs/screenshots/generated-reports.png)
+
+The demo script cleans up its temporary workspace when it finishes:
+
+![Supply Chain Guard demo completion](docs/screenshots/demo-complete.png)
 
 ## Requirements
 
@@ -18,9 +50,9 @@ This is a defensive local workflow tool, not a malware sandbox. Treat approvals 
 curl -fsSL https://raw.githubusercontent.com/pc-style/supply-chain-guard/main/install.sh | bash
 ```
 
-The installer is also the updater. It clones or pulls the repo into `~/.local/share/supply-chain-guard`, runs `bun install`, creates `~/.local/bin/scguard`, and launches the config TUI.
+The installer is also the updater. It clones or pulls this repo into `~/.local/share/supply-chain-guard`, runs `bun install`, creates `~/.local/bin/scguard`, and opens the config menu when a TTY is available.
 
-During install it asks for an optional Socket API token and stores it in `~/.config/supply-chain-guard/env`. Create a token here:
+During install, you can paste a Socket API token. The installer stores it in `~/.config/supply-chain-guard/env` so scans can include Socket's package score. Create a token here:
 
 https://socket.dev/dashboard/settings/api-tokens
 
@@ -45,11 +77,11 @@ scguard agent-prompt <report.json> --agent codex|pi
 scguard agent-review <report.json> --agent codex|pi|both
 ```
 
-`add` does not install by default. It resolves the package tarball, downloads it to `.scguard/cache`, extracts it to `.scguard/work`, analyzes it, writes reports to `.scguard/reports`, and stops. Add `--approve` to install after the analysis gate passes.
+`add` does not install by default. It resolves the package tarball, downloads it to `.scguard/cache`, extracts it to `.scguard/work`, analyzes it, writes reports to `.scguard/reports`, and stops. Add `--approve` when you want the install to continue after the gate passes.
 
-Add `--agent codex`, `--agent pi`, or `--agent both` to run a mandatory coding-agent review before install. The agent must end with `SCGUARD_DECISION: approve`; `reject`, `manual-review`, missing decisions, non-zero exits, or missing agent binaries block the install.
+Add `--agent codex`, `--agent pi`, or `--agent both` when you want a required agent review before install. The agent must end with `SCGUARD_DECISION: approve`. A rejection, manual-review decision, missing decision, non-zero exit, or missing agent binary blocks the install.
 
-Run `scguard config` to choose the default agent review behavior for every scan and install gate: no agent, Codex, PI, or both. PI runs with `--no-tools --no-context-files`; Codex runs through `codex exec` with a read-only sandbox.
+Run `scguard config` to choose the default review mode for future scans and install gates: no agent, Codex, PI, or both. PI runs with `--no-tools --no-context-files`. Codex runs through `codex exec` in a read-only sandbox.
 
 Recommended shell hook:
 
@@ -57,15 +89,15 @@ Recommended shell hook:
 eval "$(scguard shell-hook)"
 ```
 
-After that, habitual commands such as `bun add`, `npm install`, `pnpm update`, `yarn add`, and `code --install-extension ./extension.vsix` go through the guard first. The wrapper emits a weak warning for every package install/update operation because package managers and editor extensions can run untrusted code.
+After that, normal commands such as `bun add`, `npm install`, `pnpm update`, `yarn add`, and `code --install-extension ./extension.vsix` go through the guard first. The wrapper prints a warning for package and extension installs because those commands can run untrusted code.
 
 For now, `code --install-extension publisher.name` is blocked because the VS Code CLI would download the extension before this tool can inspect it. Download the `.vsix`, scan it, then install the reviewed artifact.
 
 ## npm Staged Publishing
 
-npm staged publishing lets maintainers review a package before it goes live. `scguard scan-stage <stage-id>` runs `npm stage download <stage-id>`, analyzes the downloaded tarball, and applies the same agent-review policy.
+npm staged publishing lets maintainers review a package before it goes live. `scguard scan-stage <stage-id>` runs `npm stage download <stage-id>`, analyzes the downloaded tarball, and applies the same agent review policy.
 
-With the shell hook active, `npm stage approve <stage-id>` is guarded: the staged package is downloaded, scanned, optionally reviewed by Codex/PI, and only then approved.
+With the shell hook active, `npm stage approve <stage-id>` is guarded. The staged package is downloaded, scanned, optionally reviewed by Codex or PI, and only then approved.
 
 ## Active Supply Chain Incident Mode
 
@@ -76,13 +108,13 @@ export SCGUARD_ACTIVE_INCIDENT="Socket reports active npm supply-chain campaign"
 export SCGUARD_ACTIVE_INCIDENT_UNTIL="2026-05-22T12:00:00Z"
 ```
 
-While active, package operations are staged and analyzed, then the user must type:
+While the advisory is active, package operations are staged and analyzed. To continue, you must type:
 
 ```text
 I accept the active supply-chain risk
 ```
 
-If they do not, the install/update command is cancelled.
+If the text does not match exactly, the install or update is cancelled.
 
 ## Socket Intelligence
 
@@ -92,7 +124,7 @@ Set `SOCKET_API_KEY` to query Socket.dev during npm scans:
 export SOCKET_API_KEY="..."
 ```
 
-The report records whether Socket was checked, skipped, or errored. If Socket reports elevated `supplyChainRisk`, the guard raises the report risk and can block the install.
+Reports say whether Socket was checked, skipped, or errored. If Socket returns a low supply-chain score, the guard raises the risk and can block the install.
 
 ## Development
 
@@ -105,13 +137,13 @@ Generated cache, reports, tarballs, `node_modules`, and env files are ignored by
 
 ## Staging And Takedown Flow
 
-The local staging flow is the `.scguard/cache`, `.scguard/work`, and `.scguard/reports` pipeline. Nothing is installed until analysis completes and approval is explicit.
+The local staging flow is the `.scguard/cache`, `.scguard/work`, and `.scguard/reports` pipeline. Nothing is installed until analysis finishes and approval is explicit.
 
-The local takedown flow is intentionally simple for this first version:
+The takedown flow is intentionally simple in this first version:
 
 - set `SCGUARD_ACTIVE_INCIDENT` to force explicit acknowledgement on every package operation
 - remove the shell hook or unset the advisory after the incident ends
-- inspect `.scguard/reports` for the exact packages and artifacts that were staged during the incident
+- inspect `.scguard/reports` for the packages and artifacts staged during the incident
 
 ## What It Checks
 
@@ -123,4 +155,4 @@ The local takedown flow is intentionally simple for this first version:
 - VS Code extension activation events, main/browser entry points, scripts, and dependency metadata
 - Socket.dev package score when `SOCKET_API_KEY` is configured
 
-The first version is intentionally conservative. It blocks installs at `high` risk, warns at `medium`, and always produces report artifacts for agent review.
+This first version is conservative. It blocks `high` risk installs, warns at `medium`, and always leaves report artifacts behind for human or agent review.

@@ -295,13 +295,13 @@ async function analyzeDirectory(
 
 function inspectIntelligence(intelligence: Partial<Report["intelligence"]>, findings: Finding[]) {
   if (intelligence.socket?.status === "checked") {
-    const risk = intelligence.socket.supplyChainRisk;
-    if (typeof risk === "number" && risk >= 0.7) {
+    const score = intelligence.socket.supplyChainRisk;
+    if (typeof score === "number" && score <= 0.3) {
       findings.push({
         id: "socket.supply-chain-risk",
-        title: "Socket reports elevated supply-chain risk",
-        severity: risk >= 0.9 ? "high" : "medium",
-        evidence: `supplyChainRisk=${risk}`,
+        title: "Socket reports a low supply-chain score",
+        severity: score <= 0.1 ? "high" : "medium",
+        evidence: `supplyChainRiskScore=${score}`,
         recommendation: "Require agent review and inspect Socket package details before installing.",
       });
     }
@@ -450,7 +450,12 @@ async function checkSocket(name: string, version: string): Promise<SocketResult>
     }
     const data = await res.json() as Record<string, any>;
     const score = data.score ?? data;
-    const supplyChainRisk = typeof score?.supplyChainRisk === "number" ? score.supplyChainRisk : undefined;
+    const rawSupplyChainRisk = score?.supplyChainRisk;
+    const supplyChainRisk = typeof rawSupplyChainRisk === "number"
+      ? rawSupplyChainRisk
+      : typeof rawSupplyChainRisk?.score === "number"
+        ? rawSupplyChainRisk.score
+        : undefined;
     return { status: "checked", package: name, version, url, supplyChainRisk, rawScore: score };
   } catch (error) {
     return {
@@ -747,7 +752,7 @@ async function runAgentReview(report: Report, reportPath: string, agent: AgentNa
     status,
     outputPath,
     exitCode,
-    summary: firstLine(output),
+    summary: summarizeAgentOutput(output),
   };
 }
 
@@ -917,8 +922,11 @@ async function writeAgentOutput(report: Report, agent: AgentName, output: string
   return outputPath;
 }
 
-function firstLine(output: string) {
-  return output.split(/\r?\n/).find((line) => line.trim().length > 0)?.slice(0, 240) ?? "";
+function summarizeAgentOutput(output: string) {
+  const lines = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const errorLine = [...lines].reverse().find((line) => /^ERROR:/i.test(line));
+  if (errorLine) return errorLine.slice(0, 240);
+  return lines.find((line) => line !== "--- stderr ---")?.slice(0, 240) ?? "";
 }
 
 function renderMarkdown(report: Report, reportPath: string) {
