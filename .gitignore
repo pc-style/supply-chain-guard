@@ -7,3 +7,5 @@ node_modules/
 src/fixtures/large-bin/bin/
 .agents/
 skills-lock.json
+.logs/
+.pi/
