@@ -72,7 +72,7 @@ chmod +x "$BIN_PATH"
 if [ -r /dev/tty ]; then
   echo
   echo "Launching Supply Chain Guard config."
-  "$BIN_PATH" config < /dev/tty > /dev/tty
+  "$BIN_PATH" config < /dev/tty
 else
   echo
   echo "Skipping interactive config because no TTY is available. Run: scguard config"
