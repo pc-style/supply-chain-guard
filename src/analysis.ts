@@ -241,7 +241,7 @@ async function inspectFiles(dir: string, findings: Finding[]) {
 
 function isMinified(text: string): boolean {
   const lines = text.split("\n").filter((l) => l.trim().length > 0).slice(0, 20);
-  if (lines.length < 3) return false;
+  if (lines.length === 0) return false;
   const avg = lines.reduce((sum, l) => sum + l.length, 0) / lines.length;
   return avg > 250;
 }
