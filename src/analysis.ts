@@ -313,10 +313,25 @@ function parseSemverRange(spec: string): SemverRange | null {
 
 function satisfiesRange(v: SemVer, range: SemverRange): boolean {
   const cmp = compareSemver(v, range.base);
-  if (range.op === "=") return cmp === 0;
+  if (range.op === "=") {
+    // Partial specs behave like X-ranges: `18` matches any 18.x.x,
+    // `1.2` matches any 1.2.x. Only fully-qualified specs require an exact match.
+    if (range.matchMajorOnly) return v.major === range.base.major;
+    if (range.matchMinorOnly) return v.major === range.base.major && v.minor === range.base.minor;
+    return cmp === 0;
+  }
   if (range.op === ">") return cmp > 0;
   if (range.op === ">=") return cmp >= 0;
-  if (range.op === "^") return v.major === range.base.major && cmp >= 0;
+  if (range.op === "^") {
+    // npm caret semantics:
+    //   ^1.2.3 -> >=1.2.3 <2.0.0
+    //   ^0.2.3 -> >=0.2.3 <0.3.0
+    //   ^0.0.3 -> >=0.0.3 <0.0.4
+    if (cmp < 0) return false;
+    if (range.base.major > 0) return v.major === range.base.major;
+    if (range.base.minor > 0) return v.major === 0 && v.minor === range.base.minor;
+    return v.major === 0 && v.minor === 0 && v.patch === range.base.patch;
+  }
   if (range.op === "~") {
     if (range.matchMajorOnly) return v.major === range.base.major && cmp >= 0;
     return v.major === range.base.major && v.minor === range.base.minor && cmp >= 0;

@@ -115,10 +115,19 @@ export function agentReviewPrompt(report: Report, reportPath: string, agent: Age
 }
 
 export function parseAgentDecision(output: string): AgentReview["status"] {
-  const match = output.match(/SCGUARD_DECISION:\s*(approve|reject|manual-review)/i);
-  if (!match) return "manual-review";
-  if (match[1].toLowerCase() === "approve") return "approved";
-  if (match[1].toLowerCase() === "reject") return "rejected";
+  // Only accept decisions that appear on their own line with the exact token,
+  // optionally followed by surrounding whitespace. This prevents matches inside
+  // prose like "I would approve" or "SCGUARD_DECISION: approve-ish".
+  const decisionLine = /^\s*SCGUARD_DECISION:\s*(approve|reject|manual-review)\s*$/gim;
+  const matches: string[] = [];
+  for (const m of output.matchAll(decisionLine)) matches.push(m[1].toLowerCase());
+  if (matches.length === 0) return "manual-review";
+  // If the agent emitted conflicting decisions, fail closed to manual-review.
+  const unique = new Set(matches);
+  if (unique.size > 1) return "manual-review";
+  const decision = matches[matches.length - 1];
+  if (decision === "approve") return "approved";
+  if (decision === "reject") return "rejected";
   return "manual-review";
 }
 

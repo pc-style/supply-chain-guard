@@ -268,11 +268,55 @@ export function classifyPackageCommand(command: string, args: string[]) {
   return { packageOperation, kind: "npm" as const, action: sub ?? "run", specs };
 }
 
+// Options across npm/bun/pnpm/yarn install commands whose next argument is
+// their value (not a package spec). Conservative superset; missing entries
+// only result in over-scanning, never under-scanning.
+const VALUE_OPTIONS = new Set([
+  "--prefix",
+  "--registry",
+  "--tag",
+  "--otp",
+  "--access",
+  "--cache",
+  "--userconfig",
+  "--globalconfig",
+  "--workspace",
+  "-w",
+  "--filter",
+  "-F",
+  "--include",
+  "--omit",
+  "--save-exact",
+  "--save-prefix",
+  "--loglevel",
+  "--cwd",
+  "-C",
+  "--lockfile-only",
+  "--cpu",
+  "--os",
+  "--libc",
+  "--node-options",
+  "--scope",
+]);
+
 function extractSpecs(base: string, args: string[]) {
   const actionIndex = args.findIndex((arg) => !arg.startsWith("-"));
   const rest = actionIndex === -1 ? [] : args.slice(actionIndex + 1);
   if (base === "npm" && (args[actionIndex] === "ci" || rest.length === 0)) return [];
-  return rest.filter((arg) => !arg.startsWith("-") && !arg.includes("="));
+  const specs: string[] = [];
+  for (let i = 0; i < rest.length; i++) {
+    const arg = rest[i];
+    if (arg.startsWith("-")) {
+      // `--key=value` carries its value inline; skip the flag only.
+      if (arg.includes("=")) continue;
+      // For known value-taking options, also skip the following argument.
+      if (VALUE_OPTIONS.has(arg)) i++;
+      continue;
+    }
+    if (arg.includes("=")) continue;
+    specs.push(arg);
+  }
+  return specs;
 }
 
 export function stripGuardOptions(args: string[]) {
