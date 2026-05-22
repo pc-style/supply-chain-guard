@@ -29,6 +29,10 @@ const PATTERNS_ALL: Array<[RegExp, string, Risk, string]> = [
   [/wget\s+[^|]+\|\s*(sh|bash)/i, "pipe-to-shell", "high", "Downloads and executes remote shell code."],
   [/(npmrc|\.ssh\/|id_rsa|AWS_SECRET|GITHUB_TOKEN|NPM_TOKEN)/i, "credential-access", "high", "References credentials or sensitive key paths."],
   [/(base64\s+-d|Buffer\.from\([^)]*base64)/i, "encoded-payload", "medium", "Decodes base64 payloads."],
+  [/\bdns\.(?:resolve|resolve4|resolve6|lookup|setServers)\s*\(/i, "dns-exfiltration", "high", "Uses DNS resolution APIs that are commonly abused for data exfiltration."],
+  [/fs\.(?:readFile|readFileSync)\s*\([\s\S]{0,240}?(fetch|axios|https?\.(?:request|get)|XMLHttpRequest)/i, "read-then-send", "high", "Reads local files then sends data over the network."],
+  [/(os\.homedir\(\)|~\/\.npmrc|\.npmrc|\.ssh\/id_rsa)/i, "sensitive-path-access", "high", "References sensitive local credential paths."],
+  [/process\.env\s*(?:\[[^\]]+\]|\.[A-Z0-9_]+)/i, "env-secret-access", "medium", "Accesses environment variables that may contain credentials."],
 ];
 
 // Patterns only checked when the scope is a lifecycle script (not generic source files).
@@ -346,17 +350,17 @@ async function inspectFiles(dir: string, findings: Finding[]) {
     if (!/\.(js|cjs|mjs|ts|sh|ps1|cmd|node)$/i.test(file) || s.size > 300_000) continue;
     const text = await Bun.file(file).text().catch(() => "");
     const stripped = stripComments(text).slice(0, 300_000);
-    if (isMinified(stripped)) {
+    const minified = isMinified(stripped);
+    if (minified) {
       findings.push({
         id: `file.${rel}.minified`,
         title: "Minified or bundled file",
-        severity: "low",
-        evidence: `${rel} appears minified (average line length > 250 chars); pattern scanning skipped`,
-        recommendation: "Review the unminified source if available before installing.",
+        severity: "medium",
+        evidence: `${rel} appears minified (average line length > 250 chars); pattern scanning may have reduced precision`,
+        recommendation: "Review the unminified source if available before installing and treat matched patterns as higher risk.",
       });
-      continue;
     }
-    inspectText(`file.${rel}`, stripped, findings, false);
+    inspectText(`file.${rel}`, stripped, findings, false, minified);
   }
 }
 
@@ -367,17 +371,19 @@ function isMinified(text: string): boolean {
   return avg > 250;
 }
 
-function inspectText(scope: string, text: string, findings: Finding[], isScript: boolean) {
+function inspectText(scope: string, text: string, findings: Finding[], isScript: boolean, inMinifiedFile = false) {
   const patterns = isScript ? [...PATTERNS_ALL, ...PATTERNS_SCRIPTS_ONLY] : PATTERNS_ALL;
   for (const [pattern, id, severity, title] of patterns) {
     const match = text.match(pattern);
     if (!match) continue;
     findings.push({
       id: `${scope}.${id}`,
-      title,
+      title: inMinifiedFile ? `${title} (detected in minified file)` : title,
       severity,
       evidence: snippet(text, match.index ?? 0),
-      recommendation: "Review the exact code path and require a trusted explanation before installing.",
+      recommendation: inMinifiedFile
+        ? "Pattern was found in minified code. Review the original source or deobfuscate before installing."
+        : "Review the exact code path and require a trusted explanation before installing.",
     });
   }
 }
@@ -448,90 +454,11 @@ export function resolveNpmVersion(versions: string[], distTags: Record<string, s
   if (!requested) return distTags.latest;
   if (versions.includes(requested)) return requested;
   if (distTags[requested]) return distTags[requested];
-  const range = parseSemverRange(requested);
-  if (range) {
-    const matches = versions
-      .map(parseSemver)
-      .filter((v): v is SemVer => v !== null && satisfiesRange(v, range) && !v.prerelease)
-      .sort(compareSemver);
-    if (matches.length > 0) return formatSemver(matches[matches.length - 1]);
-  }
+  const matches = versions
+    .filter((v) => Bun.semver.satisfies(v, requested))
+    .sort((a, b) => Bun.semver.order(a, b));
+  if (matches.length > 0) return matches[matches.length - 1];
   return undefined;
-}
-
-type SemVer = { major: number; minor: number; patch: number; prerelease?: string };
-
-function parseSemver(version: string): SemVer | null {
-  const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/);
-  if (!match) return null;
-  return { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3]), prerelease: match[4] };
-}
-
-function formatSemver(v: SemVer): string {
-  const base = `${v.major}.${v.minor}.${v.patch}`;
-  return v.prerelease ? `${base}-${v.prerelease}` : base;
-}
-
-function compareSemver(a: SemVer, b: SemVer): number {
-  if (a.major !== b.major) return a.major - b.major;
-  if (a.minor !== b.minor) return a.minor - b.minor;
-  return a.patch - b.patch;
-}
-
-type SemverRange = { op: "^" | "~" | "=" | ">=" | ">"; base: SemVer; matchMajorOnly?: boolean; matchMinorOnly?: boolean };
-
-function parseSemverRange(spec: string): SemverRange | null {
-  const trimmed = spec.trim().replace(/^v/i, "");
-  const opMatch = trimmed.match(/^(\^|~|>=|>|=)?\s*(.+)$/);
-  if (!opMatch) return null;
-  const op = (opMatch[1] || "=") as SemverRange["op"];
-  const rest = opMatch[2];
-  const parts = rest.split(".");
-  if (parts.length === 0 || !parts[0] || !/^\d+$/.test(parts[0])) return null;
-  const major = Number(parts[0]);
-  const minor = parts[1] && /^\d+$/.test(parts[1]) ? Number(parts[1]) : 0;
-  const patch = parts[2] && /^\d+$/.test(parts[2].split("-")[0]) ? Number(parts[2].split("-")[0]) : 0;
-  return {
-    op,
-    base: { major, minor, patch },
-    matchMajorOnly: parts.length === 1,
-    matchMinorOnly: parts.length === 2,
-  };
-}
-
-function satisfiesRange(v: SemVer, range: SemverRange): boolean {
-  const cmp = compareSemver(v, range.base);
-  if (range.op === "=") {
-    // Partial specs behave like X-ranges: `18` matches any 18.x.x,
-    // `1.2` matches any 1.2.x. Only fully-qualified specs require an exact match.
-    if (range.matchMajorOnly) return v.major === range.base.major;
-    if (range.matchMinorOnly) return v.major === range.base.major && v.minor === range.base.minor;
-    return cmp === 0;
-  }
-  if (range.op === ">") return cmp > 0;
-  if (range.op === ">=") return cmp >= 0;
-  if (range.op === "^") {
-    // npm caret semantics:
-    //   ^1.2.3 -> >=1.2.3 <2.0.0
-    //   ^0.2.3 -> >=0.2.3 <0.3.0
-    //   ^0.0.3 -> >=0.0.3 <0.0.4
-    // Partial specs leave the unspecified components at 0 and broaden the upper bound:
-    //   ^0     -> >=0.0.0 <1.0.0  (any 0.x.x)
-    //   ^0.0   -> >=0.0.0 <0.1.0  (any 0.0.x)
-    if (cmp < 0) return false;
-    if (range.base.major > 0) return v.major === range.base.major;
-    // major === 0
-    if (range.matchMajorOnly) return v.major === 0;
-    if (range.base.minor > 0) return v.major === 0 && v.minor === range.base.minor;
-    // base is 0.0.x
-    if (range.matchMinorOnly) return v.major === 0 && v.minor === 0;
-    return v.major === 0 && v.minor === 0 && v.patch === range.base.patch;
-  }
-  if (range.op === "~") {
-    if (range.matchMajorOnly) return v.major === range.base.major && cmp >= 0;
-    return v.major === range.base.major && v.minor === range.base.minor && cmp >= 0;
-  }
-  return false;
 }
 
 export function parsePackageSpec(spec: string): { name: string; version?: string } {

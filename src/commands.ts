@@ -212,6 +212,8 @@ export async function guardCommand(args: string[]) {
 
   if (isBareInstall) {
     const summary = await scanLockfile(process.cwd(), args.slice(1));
+    const allowScanFailures = Bun.env.SCGUARD_ALLOW_SCAN_FAILURES === "1";
+    if (summary.failed.length > 0 && !allowScanFailures) throw lockfileFailedScanError(summary);
     if (summary.blocked.length > 0) throw lockfileBlockingError(summary);
     requireActiveIncidentAcceptance(advisory);
     await run(command, realArgs);
@@ -406,6 +408,17 @@ function lockfileBlockingError(summary: LockfileScanSummary): Error {
     ...summary.blocked.map((b) => `  - ${b.name}@${b.version}  ${b.reportPath}`),
     `To bypass for one command (not recommended): SCGUARD_BYPASS=1 <your command>`,
   ];
+  return new Error(lines.join("\n"));
+}
+
+function lockfileFailedScanError(summary: LockfileScanSummary): Error {
+  const lines = [
+    `Blocked install: ${summary.failed.length} package(s) in ${summary.detected.path} could not be analyzed.`,
+    ...summary.failed.slice(0, 20).map((f) => `  - ${f.name}@${f.version}  ${f.error.split("\n")[0]}`),
+    summary.failed.length > 20 ? `  ... and ${summary.failed.length - 20} more` : "",
+    "To allow this once (not recommended): SCGUARD_ALLOW_SCAN_FAILURES=1 <your command>",
+    "To bypass all checks (not recommended): SCGUARD_BYPASS=1 <your command>",
+  ].filter(Boolean);
   return new Error(lines.join("\n"));
 }
 

