@@ -7,12 +7,23 @@ import {
   commandExists,
   debug,
   objectValue,
+  readConfig,
   readActiveAdvisory,
   readJson,
   run,
   walk,
 } from "./core";
-import type { Finding, Report, Risk } from "./core";
+import type {
+  Finding,
+  PolicyPreset,
+  Report,
+  ReportPolicy,
+  PackageAgeResult,
+  Risk,
+  SafeResolverMode,
+  SafeResolverSuggestion,
+  ScanReason,
+} from "./core";
 import {
   checkOsv,
   checkPackageAge,
@@ -42,21 +53,27 @@ const PATTERNS_SCRIPTS_ONLY: Array<[RegExp, string, Risk, string]> = [
   [/process\.env/i, "env-access", "medium", "Reads process environment variables in a lifecycle script."],
 ];
 
-export async function scanNpm(spec: string, options: { offline?: boolean } = {}): Promise<Report> {
+export async function scanNpm(spec: string, options: { offline?: boolean; packageAge?: PackageAgeResult } = {}): Promise<Report> {
+  const parsedSpec = parsePackageSpec(spec);
+  const requestedName = parsedSpec.name;
+  const requestedVersion = parsedSpec.version;
   debug(`resolving ${spec}`);
   const meta = await resolveNpm(spec);
   const tarball = String(meta.dist.tarball);
-  const name = String(meta.name);
+  const resolvedName = String(meta.name);
   const version = String(meta.version);
-  const safeName = name.replaceAll("/", "_").replaceAll("@", "");
+  const safeName = resolvedName.replaceAll("/", "_").replaceAll("@", "");
   const artifactPath = join(CACHE_DIR, `${safeName}-${version}.tgz`);
   const offlineOpt = { offline: options.offline };
   // Fan out intelligence lookups in parallel with the (cached or fresh) tarball download.
+  const packageAgePromise = options.packageAge
+    ? Promise.resolve(options.packageAge)
+    : checkPackageAge(resolvedName, version, offlineOpt);
   const intelPromise = Promise.all([
-    checkSocket(name, version, offlineOpt),
-    checkOsv(name, version, offlineOpt),
-    checkPackageAge(name, version, offlineOpt),
-    verifyNpmSignatures(name, version, meta.dist ?? {}, offlineOpt),
+    checkSocket(resolvedName, version, offlineOpt),
+    checkOsv(resolvedName, version, offlineOpt),
+    packageAgePromise,
+    verifyNpmSignatures(resolvedName, version, meta.dist ?? {}, offlineOpt),
   ]);
   if (await Bun.file(artifactPath).exists()) {
     debug(`cache hit ${artifactPath}`);
@@ -69,14 +86,26 @@ export async function scanNpm(spec: string, options: { offline?: boolean } = {})
   const packageDir = await findPackageRoot(extracted);
   debug(`analyzing ${packageDir}`);
   const [socket, osv, packageAge, npmSignature] = await intelPromise;
-  const typosquat = checkTyposquat(name);
-  const report = await analyzeDirectory(`${name}@${version}`, "npm", packageDir, tarball, artifactPath, {
+  const config = await readConfig();
+  const reportPolicy = await buildReportPolicy({
+    preset: config.preset,
+    safeResolver: config.safeResolver,
+    scanReason: "direct-review",
+  }, {
+    requestedVersion,
+    resolvedVersion: version,
+    packageAge,
+    name: requestedName,
+    offline: options.offline,
+  });
+  const typosquat = checkTyposquat(resolvedName);
+  const report = await analyzeDirectory(`${resolvedName}@${version}`, "npm", packageDir, tarball, artifactPath, {
     socket,
     osv,
     packageAge,
     npmSignature,
     typosquat,
-  });
+  }, reportPolicy);
   const expectedIntegrity = meta.dist?.integrity ? String(meta.dist.integrity) : undefined;
   if (expectedIntegrity) {
     const ok = await verifyIntegrity(artifactPath, expectedIntegrity);
@@ -100,7 +129,12 @@ export async function scanVsix(file: string): Promise<Report> {
   const extracted = await mkdtemp(join(WORK_DIR, "vsix-"));
   await run("unzip", ["-q", file, "-d", extracted]);
   const extensionDir = join(extracted, "extension");
-  return analyzeDirectory(basename(file), "vsix", extensionDir, file, file);
+  const config = await readConfig();
+  return analyzeDirectory(basename(file), "vsix", extensionDir, file, file, {}, {
+    preset: config.preset,
+    safeResolver: config.safeResolver,
+    scanReason: "policy",
+  });
 }
 
 export async function scanNpmStage(stageId: string, options: { offline?: boolean } = {}): Promise<Report> {
@@ -120,11 +154,16 @@ export async function scanNpmStage(stageId: string, options: { offline?: boolean
       ])
     : [undefined, undefined, undefined];
   const typosquat = known ? checkTyposquat(name) : undefined;
+  const config = await readConfig();
   return analyzeDirectory(`npm-stage:${stageId}:${name}@${version}`, "npm-stage", packageDir, `npm stage download ${stageId}`, artifactPath, {
     socket,
     osv,
     packageAge,
     typosquat,
+  }, {
+    preset: config.preset,
+    safeResolver: config.safeResolver,
+    scanReason: "policy",
   });
 }
 
@@ -135,6 +174,7 @@ export async function analyzeDirectory(
   source: string,
   artifactPath?: string,
   intelligence: Partial<Report["intelligence"]> = {},
+  policyOverride?: Partial<ReportPolicy>,
 ): Promise<Report> {
   const pkgPath = join(dir, "package.json");
   const pkg = await readJson<Record<string, unknown>>(pkgPath);
@@ -144,6 +184,19 @@ export async function analyzeDirectory(
   await inspectFiles(dir, findings);
   const artifact = artifactPath ? await artifactInfo(artifactPath, source) : { source, sha256: "not-applicable", bytes: 0 };
   const risk = summarizeRisk(findings);
+  const config = await readConfig();
+  const policy: ReportPolicy = policyOverride
+    ? {
+        preset: policyOverride.preset ?? config.preset,
+        safeResolver: policyOverride.safeResolver ?? config.safeResolver,
+        scanReason: policyOverride.scanReason ?? "direct-review",
+        ...(policyOverride.safeResolverSuggestion ? { safeResolverSuggestion: policyOverride.safeResolverSuggestion } : {}),
+      }
+    : {
+        preset: config.preset,
+        safeResolver: config.safeResolver,
+        scanReason: "direct-review",
+      };
   return {
     schemaVersion: 1,
     target,
@@ -161,6 +214,7 @@ export async function analyzeDirectory(
       installAllowed: risk !== "high",
     },
     findings,
+    policy,
   };
 }
 
@@ -461,6 +515,26 @@ export function resolveNpmVersion(versions: string[], distTags: Record<string, s
   return undefined;
 }
 
+function versionMatchesRequested(version: string, requested: string, versions: string[], distTags: Record<string, string>): boolean {
+  if (versions.includes(requested)) return version === requested;
+  if (distTags[requested]) return version === distTags[requested];
+  return Bun.semver.satisfies(version, requested);
+}
+
+type SemVer = { major: number; minor: number; patch: number; prerelease?: string };
+
+function parseSemver(version: string): SemVer | null {
+  const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/);
+  if (!match) return null;
+  return { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3]), prerelease: match[4] };
+}
+
+function compareSemver(a: SemVer, b: SemVer): number {
+  if (a.major !== b.major) return a.major - b.major;
+  if (a.minor !== b.minor) return a.minor - b.minor;
+  return a.patch - b.patch;
+}
+
 export function parsePackageSpec(spec: string): { name: string; version?: string } {
   if (spec.startsWith("@")) {
     const secondAt = spec.indexOf("@", 1);
@@ -470,6 +544,163 @@ export function parsePackageSpec(spec: string): { name: string; version?: string
   const at = spec.lastIndexOf("@");
   if (at <= 0) return { name: spec };
   return { name: spec.slice(0, at), version: spec.slice(at + 1) };
+}
+
+function buildReportPolicy(
+  base: Partial<ReportPolicy>,
+  context: {
+    name?: string;
+    requestedVersion?: string;
+    resolvedVersion?: string;
+    packageAge?: Report["intelligence"]["packageAge"];
+    offline?: boolean;
+  },
+): Promise<ReportPolicy> {
+  const preset = base.preset ?? "default";
+  const safeResolver = base.safeResolver ?? "suggest";
+  const scanReason = base.scanReason ?? "direct-review";
+  const freshnessWindowHours = freshnessWindowHoursForPreset(preset);
+  const versionAgeHours = context.packageAge?.status === "checked" ? context.packageAge.versionAgeHours : undefined;
+  const suggestionPromise = safeResolver === "suggest" && context.name && context.resolvedVersion && typeof versionAgeHours === "number" && versionAgeHours >= 0 && versionAgeHours < freshnessWindowHours
+    ? buildSafeResolverSuggestion({
+        name: context.name,
+        requestedVersion: context.requestedVersion,
+        resolvedVersion: context.resolvedVersion,
+        freshnessWindowHours,
+        offline: context.offline,
+      })
+    : Promise.resolve(undefined);
+  return suggestionPromise.then((safeResolverSuggestion) => ({
+    preset,
+    safeResolver,
+    scanReason,
+    ...(safeResolverSuggestion ? { safeResolverSuggestion } : {}),
+  }));
+}
+
+export function freshnessWindowHoursForPreset(preset: PolicyPreset): number {
+  if (preset === "quiet") return 24;
+  if (preset === "strict-ci") return 30 * 24;
+  if (preset === "enterprise") return 30 * 24;
+  return 7 * 24;
+}
+
+export async function buildSafeResolverSuggestion(options: {
+  name: string;
+  requestedVersion?: string;
+  resolvedVersion: string;
+  freshnessWindowHours: number;
+  offline?: boolean;
+}): Promise<SafeResolverSuggestion> {
+  if (options.offline) {
+    return {
+      status: "unavailable",
+      message: "Offline mode: safe resolver suggestion skipped.",
+      resolved: options.resolvedVersion,
+      requested: options.requestedVersion,
+      freshnessWindowHours: options.freshnessWindowHours,
+    };
+  }
+  const requested = options.requestedVersion;
+  if (!requested) {
+    return {
+      status: "none",
+      message: `No older version satisfies the implicit latest-tag request for ${options.name}.`,
+      resolved: options.resolvedVersion,
+      freshnessWindowHours: options.freshnessWindowHours,
+    };
+  }
+  try {
+    const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(options.name).replace("%40", "@")}`, {
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) {
+      return {
+        status: "unavailable",
+        message: `Registry returned HTTP ${res.status}; safe resolver suggestion unavailable.`,
+        requested,
+        resolved: options.resolvedVersion,
+        freshnessWindowHours: options.freshnessWindowHours,
+      };
+    }
+    const data = await res.json() as { versions?: Record<string, Record<string, unknown>>; time?: Record<string, string>; "dist-tags"?: Record<string, string> };
+    return pickSafeResolverSuggestion({
+      name: options.name,
+      requestedVersion: requested,
+      resolvedVersion: options.resolvedVersion,
+      freshnessWindowHours: options.freshnessWindowHours,
+      versions: Object.keys(data.versions ?? {}),
+      publishTimes: data.time ?? {},
+      distTags: data["dist-tags"] ?? {},
+    });
+  } catch (error) {
+    return {
+      status: "unavailable",
+      message: error instanceof Error ? error.message : String(error),
+      requested,
+      resolved: options.resolvedVersion,
+      freshnessWindowHours: options.freshnessWindowHours,
+    };
+  }
+}
+
+export function pickSafeResolverSuggestion(options: {
+  name: string;
+  requestedVersion?: string;
+  resolvedVersion: string;
+  freshnessWindowHours: number;
+  versions: string[];
+  publishTimes: Record<string, string>;
+  distTags?: Record<string, string>;
+}): SafeResolverSuggestion {
+  const requested = options.requestedVersion;
+  if (!requested) {
+    return {
+      status: "none",
+      message: `No older version satisfies the implicit latest-tag request for ${options.name}.`,
+      resolved: options.resolvedVersion,
+      freshnessWindowHours: options.freshnessWindowHours,
+    };
+  }
+  const versions = options.versions;
+  const distTags = options.distTags ?? {};
+  const allowPrerelease = requested.includes("-");
+  const candidates = versions
+    .filter((version) => version !== options.resolvedVersion)
+    .filter((version) => versionMatchesRequested(version, requested, versions, distTags))
+    .filter((version) => {
+      const parsed = parseSemver(version);
+      if (!parsed) return false;
+      if (parsed.prerelease && !allowPrerelease) return false;
+      const published = options.publishTimes[version];
+      if (!published) return false;
+      const ageHours = Math.floor((Date.now() - Date.parse(published)) / 3_600_000);
+      return Number.isFinite(ageHours) && ageHours >= options.freshnessWindowHours;
+    })
+    .map((version) => ({
+      version,
+      parsed: parseSemver(version),
+    }))
+    .filter((entry): entry is { version: string; parsed: SemVer } => !!entry.parsed)
+    .sort((a, b) => compareSemver(a.parsed, b.parsed));
+  const suggested = candidates[candidates.length - 1]?.version;
+  if (!suggested) {
+    return {
+      status: "none",
+      message: `No older non-prerelease version satisfies ${options.name}@${requested}.`,
+      requested,
+      resolved: options.resolvedVersion,
+      freshnessWindowHours: options.freshnessWindowHours,
+    };
+  }
+  return {
+    status: "suggested",
+    message: `Safe Resolver suggests ${options.name}@${suggested} instead of the freshly published ${options.resolvedVersion}.`,
+    requested,
+    resolved: options.resolvedVersion,
+    suggested,
+    freshnessWindowHours: options.freshnessWindowHours,
+  };
 }
 
 async function download(url: string, path: string) {

@@ -88,7 +88,7 @@ scguard install <package[@version]> [--dev] [--agent codex|pi|both]
 scguard scan-vsix <path-to-extension.vsix> [--json]
 scguard doctor
 scguard clean [--reports] [--cache] [--work] [--all]
-scguard config [--show] [--agent none|codex|pi|both]
+scguard config [--show] [--preset quiet|default|strict-ci|enterprise|advisory] [--safe-resolver off|suggest] [--agent none|codex|pi|both]
 scguard shell-hook
 ```
 
@@ -98,9 +98,9 @@ Advanced commands: `scguard scan-lockfile`, `scguard scan-npm`, `scguard scan-st
 
 Add `--agent codex`, `--agent pi`, or `--agent both` when you want a required agent review before install. The agent must end with `SCGUARD_DECISION: approve`. A rejection, manual-review decision, missing decision, non-zero exit, or missing agent binary blocks the install.
 
-Run `scguard config` to choose the default review mode for future scans and install gates: no agent, Codex, PI, or both. PI runs with `--no-tools --no-context-files`. Codex runs through `codex exec` in a read-only sandbox.
+Run `scguard config` to choose the default preset, safe resolver mode, and agent review for future scans and install gates. PI runs with `--no-tools --no-context-files`. Codex runs through `codex exec` in a read-only sandbox.
 
-`scguard doctor` checks Bun, Git, tar, unzip, `~/.local/bin` on PATH, the shell hook, the Socket token, and the optional Codex/PI CLIs. Run it first if something looks wrong.
+`scguard doctor` checks Bun, Git, tar, unzip, `~/.local/bin` on PATH, the shell hook, the Socket token, the active preset, and the optional Codex/PI CLIs. Run it first if something looks wrong.
 
 `scguard clean` removes generated state under `.scguard/`. Use `--reports`, `--cache`, `--work`, or `--all` to choose what to clear.
 
@@ -110,14 +110,16 @@ Recommended shell hook:
 eval "$(scguard shell-hook)"
 ```
 
-After that, normal commands such as `bun add lodash`, `pnpm add react`, `yarn add zod`, and `code --install-extension ./extension.vsix` go through the guard first. Bare `npm install`, `npm ci`, and `bun install` are routed through `scguard scan-lockfile`: every `name@version` pinned in `bun.lock` / `package-lock.json` / `pnpm-lock.yaml` / `yarn.lock` is downloaded into the local cache, analyzed in parallel, and any high-risk package blocks the install. Use `SCGUARD_BYPASS=1` for a single command if you need to skip the guard.
+After that, normal commands such as `bun add lodash`, `pnpm add react`, `yarn add zod`, and `code --install-extension ./extension.vsix` go through the guard first. Bare `npm install`, `npm ci`, and `bun install` are routed through `scguard scan-lockfile`, which follows the active preset instead of deep-scanning every locked package by default. The `default` preset scans fresh versions under 7 days plus packages changed from the saved `.scguard/lockfile-baseline.json`; `quiet`, `strict-ci`, `enterprise`, and `advisory` adjust that scope. Use `SCGUARD_BYPASS=1` for a single command if you need to skip the guard.
 
 You can also run it directly:
 
 ```sh
-scguard scan-lockfile           # scans the lockfile in the current directory
+scguard scan-lockfile           # scans the lockfile in the current directory using the active preset
 scguard scan-lockfile path/to/project
 ```
+
+Every successful bare-lockfile scan writes or refreshes `.scguard/lockfile-baseline.json` so future installs can detect changed packages without relying only on Git state.
 
 Tune parallelism with `SCGUARD_LOCKFILE_CONCURRENCY` (default `8`).
 
@@ -143,6 +145,16 @@ export SOCKET_API_KEY="..."
 ```
 
 Reports say whether Socket was checked, skipped, or errored. If Socket returns a low supply-chain score, the guard raises the risk and can block the install.
+
+## Policy Presets
+
+- `quiet`: only scan versions published in the last 24 hours
+- `default`: scan fresh versions under 7 days plus packages changed from the last saved baseline
+- `strict-ci`: scan changed lockfile entries plus fresh/risky versions under 30 days
+- `enterprise`: scan broadly and keep online intelligence enabled when available
+- `advisory`: same scope as `default`, but findings never block a bare install
+
+Safe Resolver is suggest-only in this release. When a direct package review resolves to a version that is newer than the preset freshness window, the report can suggest an older stable version that still satisfies the requested spec. It never rewrites the install command.
 
 ## npm Staged Publishing
 

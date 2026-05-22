@@ -73,6 +73,13 @@ function renderHumanReport(report: Report, jsonPath: string) {
     if (typeof a.versionAgeHours === "number") parts.push(`version=${a.versionAgeHours}h`);
     meta("age", parts.join(" ") || "unknown");
   }
+  if (report.policy) {
+    meta("preset", report.policy.preset);
+    meta("scan-reason", report.policy.scanReason);
+    if (report.policy.safeResolverSuggestion) {
+      meta("safe-resolver", report.policy.safeResolverSuggestion.message);
+    }
+  }
 
   if (report.findings.length > 0) {
     console.log(header("Findings"));
@@ -129,6 +136,12 @@ export function renderMarkdown(report: Report, reportPath: string) {
     `- Artifact: ${report.artifact.source}`,
     `- SHA-256: ${report.artifact.sha256}`,
     `- JSON: ${relative(ROOT, reportPath)}`,
+    "",
+    "## Policy",
+    "",
+    `- Active preset: ${report.policy?.preset ?? "default"}`,
+    `- Scan reason: ${report.policy?.scanReason ?? "direct-review"}`,
+    `- Safe resolver: ${report.policy?.safeResolverSuggestion?.message ?? (report.policy?.safeResolver ? report.policy.safeResolver : "off")}`,
     "",
     "## Intelligence",
     "",

@@ -5,6 +5,15 @@ import { homedir } from "node:os";
 
 export type Risk = "low" | "medium" | "high";
 
+export type PolicyPreset = "quiet" | "default" | "strict-ci" | "enterprise" | "advisory";
+export type SafeResolverMode = "off" | "suggest";
+export type ScanReason = "fresh-version" | "changed-lockfile-entry" | "direct-review" | "policy";
+
+export type VersionedPackage = {
+  name: string;
+  version: string;
+};
+
 export type Finding = {
   id: string;
   title: string;
@@ -39,6 +48,23 @@ export type Report = {
   };
   findings: Finding[];
   agentReviews?: AgentReview[];
+  policy?: ReportPolicy;
+};
+
+export type ReportPolicy = {
+  preset: PolicyPreset;
+  safeResolver: SafeResolverMode;
+  scanReason: ScanReason;
+  safeResolverSuggestion?: SafeResolverSuggestion;
+};
+
+export type SafeResolverSuggestion = {
+  status: "suggested" | "none" | "unavailable";
+  message: string;
+  requested?: string;
+  resolved: string;
+  suggested?: string;
+  freshnessWindowHours?: number;
 };
 
 export type AgentName = "codex" | "pi";
@@ -46,6 +72,8 @@ export type AgentMode = "none" | AgentName | "both";
 
 export type Config = {
   agentReview: AgentMode;
+  preset: PolicyPreset;
+  safeResolver: SafeResolverMode;
 };
 
 export type AgentReview = {
@@ -111,6 +139,13 @@ export type PackageAgeResult = {
   message?: string;
 };
 
+export type LockfileBaseline = {
+  schemaVersion: 1;
+  generatedAt: string;
+  kind?: string;
+  entries: VersionedPackage[];
+};
+
 export function findProjectRoot(start: string): string {
   let dir = start;
   while (true) {
@@ -127,10 +162,11 @@ export const GUARD_DIR = join(ROOT, ".scguard");
 export const CACHE_DIR = join(GUARD_DIR, "cache");
 export const WORK_DIR = join(GUARD_DIR, "work");
 export const REPORT_DIR = join(GUARD_DIR, "reports");
+export const LOCKFILE_BASELINE_PATH = join(GUARD_DIR, "lockfile-baseline.json");
 export const CONFIG_ENV_PATH = join(homedir(), ".config", "supply-chain-guard", "env");
 export const CONFIG_DIR = join(homedir(), ".config", "supply-chain-guard");
 export const CONFIG_PATH = join(CONFIG_DIR, "config.json");
-export const DEFAULT_CONFIG: Config = { agentReview: "none" };
+export const DEFAULT_CONFIG: Config = { agentReview: "none", preset: "default", safeResolver: "suggest" };
 
 export async function ensureDirs() {
   await mkdir(CACHE_DIR, { recursive: true });
@@ -159,8 +195,12 @@ export function requireArg(value: string | undefined, message: string) {
 }
 
 export function readOption(args: string[], name: string) {
-  const index = args.indexOf(name);
-  return index === -1 ? undefined : args[index + 1];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === name) return args[i + 1];
+    if (arg.startsWith(`${name}=`)) return arg.slice(name.length + 1);
+  }
+  return undefined;
 }
 
 export function debug(message: string) {
@@ -186,21 +226,73 @@ export function normalizeAgentMode(value: string): AgentMode {
   throw new Error("agentReview must be one of: none, codex, pi, both");
 }
 
-export async function readConfig(): Promise<Config> {
+export function normalizePolicyPreset(value: string): PolicyPreset {
+  if (value === "quiet" || value === "default" || value === "strict-ci" || value === "enterprise" || value === "advisory") {
+    return value;
+  }
+  throw new Error("preset must be one of: quiet, default, strict-ci, enterprise, advisory");
+}
+
+export function normalizeSafeResolverMode(value: string): SafeResolverMode {
+  if (value === "off" || value === "suggest") return value;
+  throw new Error("safeResolver must be one of: off, suggest");
+}
+
+export function normalizeConfig(raw: Partial<Config> | undefined): Config {
+  const config = raw && typeof raw === "object" ? raw : {};
+  return {
+    agentReview: normalizeAgentMode(typeof config.agentReview === "string" ? config.agentReview : DEFAULT_CONFIG.agentReview),
+    preset: normalizePolicyPreset(typeof config.preset === "string" ? config.preset : DEFAULT_CONFIG.preset),
+    safeResolver: normalizeSafeResolverMode(typeof config.safeResolver === "string" ? config.safeResolver : DEFAULT_CONFIG.safeResolver),
+  };
+}
+
+export function applyConfigEnv(config: Config, presetOverride = Bun.env.SCGUARD_PRESET): Config {
+  if (!presetOverride) return config;
+  return { ...config, preset: normalizePolicyPreset(presetOverride) };
+}
+
+export async function readConfigFile(): Promise<Config> {
   try {
     const parsed = await readJson<Partial<Config>>(CONFIG_PATH);
-    return {
-      ...DEFAULT_CONFIG,
-      agentReview: normalizeAgentMode(parsed.agentReview ?? DEFAULT_CONFIG.agentReview),
-    };
+    return normalizeConfig(parsed);
   } catch {
     return DEFAULT_CONFIG;
   }
 }
 
+export async function readConfig(): Promise<Config> {
+  return applyConfigEnv(await readConfigFile());
+}
+
 export async function writeConfig(config: Config) {
   await mkdir(CONFIG_DIR, { recursive: true });
   await Bun.write(CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`);
+}
+
+export async function readLockfileBaseline(path = LOCKFILE_BASELINE_PATH): Promise<LockfileBaseline | null> {
+  try {
+    return await readJson<LockfileBaseline>(path);
+  } catch {
+    return null;
+  }
+}
+
+export async function writeLockfileBaseline(baseline: LockfileBaseline, path = LOCKFILE_BASELINE_PATH) {
+  await mkdir(dirname(path), { recursive: true });
+  await Bun.write(path, `${JSON.stringify(baseline, null, 2)}\n`);
+}
+
+export function versionedPackageKey(entry: VersionedPackage) {
+  return `${entry.name}@${entry.version}`;
+}
+
+export function versionedPackageMap(entries: VersionedPackage[]) {
+  return new Map(entries.map((entry) => [entry.name, entry.version]));
+}
+
+export function versionedPackageSet(entries: VersionedPackage[]) {
+  return new Set(entries.map(versionedPackageKey));
 }
 
 export function readActiveAdvisory(): ActiveAdvisory {

@@ -103,7 +103,7 @@ async function main() {
 
   if (cmd === "scan-lockfile") {
     const summary = await scanLockfileCommand(args);
-    if (summary.blocked.length > 0) process.exit(2);
+    if (summary.blockInstall) process.exit(2);
     return;
   }
 
@@ -174,18 +174,18 @@ async function help() {
   console.log("");
   section("Common");
   item("scguard review", "<package[@version]> [--agent codex|pi|both] [--sbom] [--offline]", "Download, stage, and analyze a package without installing it.");
-  item("scguard install", "<package[@version]> [--dev] [--pm bun|npm|pnpm|yarn] [--agent codex|pi|both] [--sbom] [--offline]", "Review, then install only after the gate (and any agent review) passes. Detects the project's package manager from lockfiles unless --pm is set.");
+  item("scguard install", "<package[@version]> [--dev] [--pm bun|npm|pnpm|yarn] [--agent codex|pi|both] [--sbom] [--offline]", "Review, then install only after the gate (and any agent review) passes. Direct package installs stay strict even when the app preset is more relaxed.");
   item("scguard scan-vsix", "<extension.vsix> [--json] [--sbom]", "Analyze a downloaded VS Code extension artifact.");
   item("scguard doctor", "", "Check dependencies, PATH, shell hook, Socket token, and agent CLIs.");
   item("scguard clean", "[--reports] [--cache] [--work] [--all]", "Remove cached artifacts, working dirs, or report history.");
-  item("scguard config", "[--show] [--agent none|codex|pi|both]", "Set the default agent-review policy.");
+  item("scguard config", "[--show] [--preset quiet|default|strict-ci|enterprise|advisory] [--safe-resolver off|suggest] [--agent none|codex|pi|both]", "Set the default policy preset, safe resolver mode, and agent-review policy.");
 
   section("Setup");
   item("scguard shell-hook", "", "Print shell functions that route bun/npm/pnpm/yarn/code through scguard.");
   item("scguard version", "", "Print the installed version.");
 
   section("Advanced");
-  item("scguard scan-lockfile", "[dir]", "Scan every package in a lockfile (bun/npm/pnpm/yarn). Used by the shell hook for bare 'install'.");
+  item("scguard scan-lockfile", "[dir]", "Scan lockfile packages using the active preset policy. Used by the shell hook for bare 'install'.");
   item("scguard scan-npm", "<package[@version]> [--json]", "Scan a published npm package directly.");
   item("scguard scan-stage", "<stage-id> [--json]", "Scan an npm staged-publish artifact.");
   item("scguard guard", "bun|npm|pnpm|yarn|code <args...>", "Wrap a package-manager command behind the gate.");
@@ -198,6 +198,7 @@ async function help() {
   env("SOCKET_API_KEY", "Enable Socket.dev intelligence on npm scans.");
   env("SCGUARD_ACTIVE_INCIDENT", "Require typed acknowledgement during an active advisory.");
   env("SCGUARD_LOCKFILE_CONCURRENCY", "Parallel package scans for scan-lockfile (default 8).");
+  env("SCGUARD_PRESET", "Override the active preset for the current shell session.");
   env("SCGUARD_OFFLINE=1", "Disable all network calls (same as --offline).");
   console.log("");
 }
