@@ -9,6 +9,10 @@ function age(hours: number) {
   return { status: "checked" as const, versionAgeHours: hours };
 }
 
+function ageError() {
+  return { status: "error" as const, message: "registry unavailable" };
+}
+
 describe("lockfile policy selection", () => {
   test("quiet selects only fresh versions under 24h", () => {
     const selection = planLockfileSelection(
@@ -70,6 +74,17 @@ describe("lockfile policy selection", () => {
     expect(selected.selected[0]?.reason).toBe("fresh-version");
     expect(skipped.selected).toHaveLength(0);
     expect(skipped.skipped).toHaveLength(1);
+  });
+
+  test("selects packages when freshness lookup fails", () => {
+    const selection = planLockfileSelection(
+      [{ name: "unknown-age-pkg", version: "1.0.0" }],
+      null,
+      "quiet",
+      new Map([["unknown-age-pkg@1.0.0", ageError()]]),
+    );
+    expect(selection.selected).toHaveLength(1);
+    expect(selection.selected[0]?.reason).toBe("fresh-version");
   });
 
   test("advisory never blocks even when high-risk findings exist", () => {

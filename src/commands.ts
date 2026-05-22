@@ -494,7 +494,7 @@ export function planLockfileSelection(
     const key = `${entry.name}@${entry.version}`;
     const age = packageAges.get(key);
     const versionAgeHours = age?.status === "checked" ? age.versionAgeHours : undefined;
-    const fresh = typeof versionAgeHours === "number" && versionAgeHours >= 0 && versionAgeHours < windowHours;
+    const fresh = age?.status !== "checked" || (typeof versionAgeHours === "number" && versionAgeHours >= 0 && versionAgeHours < windowHours);
     const changed = baselineSet ? !baselineSet.has(key) : false;
 
     if (preset === "enterprise") {
