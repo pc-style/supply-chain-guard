@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { planLockfileSelection, shouldBlockLockfileInstall } from "./commands";
+import { lockfileBaselinePath, planLockfileSelection, shouldBlockLockfileInstall } from "./commands";
 import { readLockfileBaseline, writeLockfileBaseline } from "./core";
 
 function age(hours: number) {
@@ -79,6 +79,11 @@ describe("lockfile policy selection", () => {
 });
 
 describe("lockfile baseline persistence", () => {
+  test("scopes the default scan baseline under the requested cwd", () => {
+    expect(lockfileBaselinePath("/tmp/project-a")).toBe("/tmp/project-a/.scguard/lockfile-baseline.json");
+    expect(lockfileBaselinePath("/tmp/project-b")).toBe("/tmp/project-b/.scguard/lockfile-baseline.json");
+  });
+
   test("round-trips a saved baseline file", async () => {
     const dir = await mkdtemp(join(tmpdir(), "scguard-baseline-"));
     const path = join(dir, "baseline.json");

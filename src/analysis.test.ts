@@ -102,6 +102,23 @@ describe("pickSafeResolverSuggestion", () => {
     expect(suggestion.suggested).toBe("1.1.0");
   });
 
+  test("uses npm range semantics for OR and x-range fallback candidates", () => {
+    const suggestion = pickSafeResolverSuggestion({
+      name: "demo",
+      requestedVersion: "1.x || ^2.0.0",
+      resolvedVersion: "2.1.0",
+      freshnessWindowHours: 24,
+      versions: ["1.4.0", "2.0.0", "2.1.0"],
+      publishTimes: {
+        "1.4.0": "2026-01-01T00:00:00Z",
+        "2.0.0": "2026-01-02T00:00:00Z",
+        "2.1.0": new Date(Date.now() - 2 * 3_600_000).toISOString(),
+      },
+    });
+    expect(suggestion.status).toBe("suggested");
+    expect(suggestion.suggested).toBe("2.0.0");
+  });
+
   test("reports no suggestion when no older satisfying version exists", () => {
     const suggestion = pickSafeResolverSuggestion({
       name: "demo",

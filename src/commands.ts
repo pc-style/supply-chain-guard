@@ -349,7 +349,8 @@ export async function scanLockfile(cwd: string, args: string[] = []): Promise<Lo
   }
 
   const config = await readConfig();
-  const baseline = await readLockfileBaseline();
+  const baselinePath = lockfileBaselinePath(cwd);
+  const baseline = await readLockfileBaseline(baselinePath);
   const offline = isOfflineMode(args);
   const concurrency = Math.max(1, Number(Bun.env.SCGUARD_LOCKFILE_CONCURRENCY ?? 8));
   const ageResults = await collectPackageAges(entries, offline, concurrency);
@@ -431,7 +432,7 @@ export async function scanLockfile(cwd: string, args: string[] = []): Promise<Lo
       generatedAt: new Date().toISOString(),
       kind: detected.kind,
       entries,
-    });
+    }, baselinePath);
     summary.baselineUpdated = true;
   }
 
@@ -460,6 +461,10 @@ export async function scanLockfile(cwd: string, args: string[] = []): Promise<Lo
   }
 
   return summary;
+}
+
+export function lockfileBaselinePath(cwd: string) {
+  return join(cwd, ".scguard", "lockfile-baseline.json");
 }
 
 function lockfileBlockingError(summary: LockfileScanSummary): Error {

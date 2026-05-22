@@ -518,10 +518,7 @@ export function resolveNpmVersion(versions: string[], distTags: Record<string, s
 function versionMatchesRequested(version: string, requested: string, versions: string[], distTags: Record<string, string>): boolean {
   if (versions.includes(requested)) return version === requested;
   if (distTags[requested]) return version === distTags[requested];
-  const range = parseSemverRange(requested);
-  if (!range) return false;
-  const parsed = parseSemver(version);
-  return parsed !== null && satisfiesRange(parsed, range);
+  return Bun.semver.satisfies(version, requested);
 }
 
 type SemVer = { major: number; minor: number; patch: number; prerelease?: string };
@@ -532,71 +529,10 @@ function parseSemver(version: string): SemVer | null {
   return { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3]), prerelease: match[4] };
 }
 
-function formatSemver(v: SemVer): string {
-  const base = `${v.major}.${v.minor}.${v.patch}`;
-  return v.prerelease ? `${base}-${v.prerelease}` : base;
-}
-
 function compareSemver(a: SemVer, b: SemVer): number {
   if (a.major !== b.major) return a.major - b.major;
   if (a.minor !== b.minor) return a.minor - b.minor;
   return a.patch - b.patch;
-}
-
-type SemverRange = { op: "^" | "~" | "=" | ">=" | ">"; base: SemVer; matchMajorOnly?: boolean; matchMinorOnly?: boolean };
-
-function parseSemverRange(spec: string): SemverRange | null {
-  const trimmed = spec.trim().replace(/^v/i, "");
-  const opMatch = trimmed.match(/^(\^|~|>=|>|=)?\s*(.+)$/);
-  if (!opMatch) return null;
-  const op = (opMatch[1] || "=") as SemverRange["op"];
-  const rest = opMatch[2];
-  const parts = rest.split(".");
-  if (parts.length === 0 || !parts[0] || !/^\d+$/.test(parts[0])) return null;
-  const major = Number(parts[0]);
-  const minor = parts[1] && /^\d+$/.test(parts[1]) ? Number(parts[1]) : 0;
-  const patch = parts[2] && /^\d+$/.test(parts[2].split("-")[0]) ? Number(parts[2].split("-")[0]) : 0;
-  return {
-    op,
-    base: { major, minor, patch },
-    matchMajorOnly: parts.length === 1,
-    matchMinorOnly: parts.length === 2,
-  };
-}
-
-function satisfiesRange(v: SemVer, range: SemverRange): boolean {
-  const cmp = compareSemver(v, range.base);
-  if (range.op === "=") {
-    // Partial specs behave like X-ranges: `18` matches any 18.x.x,
-    // `1.2` matches any 1.2.x. Only fully-qualified specs require an exact match.
-    if (range.matchMajorOnly) return v.major === range.base.major;
-    if (range.matchMinorOnly) return v.major === range.base.major && v.minor === range.base.minor;
-    return cmp === 0;
-  }
-  if (range.op === ">") return cmp > 0;
-  if (range.op === ">=") return cmp >= 0;
-  if (range.op === "^") {
-    // npm caret semantics:
-    //   ^1.2.3 -> >=1.2.3 <2.0.0
-    //   ^0.2.3 -> >=0.2.3 <0.3.0
-    //   ^0.0.3 -> >=0.0.3 <0.0.4
-    // Partial specs leave the unspecified components at 0 and broaden the upper bound:
-    //   ^0     -> >=0.0.0 <1.0.0  (any 0.x.x)
-    //   ^0.0   -> >=0.0.0 <0.1.0  (any 0.0.x)
-    if (cmp < 0) return false;
-    if (range.base.major > 0) return v.major === range.base.major;
-    // major === 0
-    if (range.matchMajorOnly) return v.major === 0;
-    if (range.base.minor > 0) return v.major === 0 && v.minor === range.base.minor;
-    // base is 0.0.x
-    if (range.matchMinorOnly) return v.major === 0 && v.minor === 0;
-    return v.major === 0 && v.minor === 0 && v.patch === range.base.patch;
-  }
-  if (range.op === "~") {
-    if (range.matchMajorOnly) return v.major === range.base.major && cmp >= 0;
-    return v.major === range.base.major && v.minor === range.base.minor && cmp >= 0;
-  }
-  return false;
 }
 
 export function parsePackageSpec(spec: string): { name: string; version?: string } {
