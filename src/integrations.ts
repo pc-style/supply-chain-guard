@@ -465,21 +465,16 @@ export async function verifyNpmSignatures(
       if (!sig.keyid || !sig.sig) {
         return { status: "error", message: "Malformed signature entry from registry." };
       }
-      const key = keys.find((k) => k.keyid === sig.keyid && isKeyUsable(k));
+      const key = keys.find((k) => k.keyid === sig.keyid);
       if (!key) {
-        const existing = keys.find((k) => k.keyid === sig.keyid);
-        const reason = existing
-          ? `Signing key ${sig.keyid} is expired (expires=${existing.expires}).`
-          : `Signing key ${sig.keyid} not found in the npm key registry.`;
-        return { status: "unverified", keyid: sig.keyid, message: reason };
+        return { status: "unverified", keyid: sig.keyid, message: `Signing key ${sig.keyid} not found in the npm key registry.` };
       }
       const ok = verifyEcdsaSignature(message, sig.sig, key.key);
       if (!ok) {
-        return {
-          status: "unverified",
-          keyid: sig.keyid,
-          message: `Signature verification failed for keyid ${sig.keyid}.`,
-        };
+        return { status: "unverified", keyid: sig.keyid, message: `Signature verification failed for keyid ${sig.keyid}.` };
+      }
+      if (!isKeyUsable(key)) {
+        return { status: "verified", keyid: sig.keyid, message: `Signature verified with expired key ${sig.keyid} (expires=${key.expires}).` };
       }
     }
     return { status: "verified", keyid: signatures[0].keyid };

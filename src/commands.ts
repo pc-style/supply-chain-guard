@@ -239,7 +239,17 @@ export async function guardCommand(args: string[]) {
       );
       let reportPath = await emitReport(report, false);
       if (!report.summary.installAllowed) {
-        throw new Error(`Blocked ${spec}: high-risk findings found. See ${reportPath}`);
+        if (report.policy?.preset !== "enterprise") {
+          console.error(`${c.amber("scguard", true)} ${c.gray("high-risk findings detected for")} ${c.white(spec)}`);
+          console.error("scguard: type exactly 'bypass' to proceed anyway (not recommended).");
+          const answer = prompt("> ");
+          if (answer !== "bypass") {
+            throw new Error(`Blocked ${spec}: high-risk findings found. See ${reportPath}`);
+          }
+          console.error(`${c.amber("scguard", true)} ${c.gray("bypass accepted; proceeding with install.")}`);
+        } else {
+          throw new Error(`Blocked ${spec}: high-risk findings found. See ${reportPath}`);
+        }
       }
       const agentMode = await resolveAgentMode(args.slice(1));
       if (agentMode.length > 0) {
@@ -571,6 +581,13 @@ export function classifyPackageCommand(command: string, args: string[]) {
     };
   }
   const sub = args.find((arg) => !arg.startsWith("-"));
+  // Package manager self-updates are not untrusted package operations.
+  if (base === "bun" && sub === "upgrade") {
+    return { packageOperation: false, kind: "npm" as const, action: sub, specs: [] };
+  }
+  if (base === "pnpm" && sub === "self-update") {
+    return { packageOperation: false, kind: "npm" as const, action: sub, specs: [] };
+  }
   const installActions = new Set(["add", "install", "i", "update", "upgrade", "ci"]);
   const packageManagers = new Set(["bun", "npm", "pnpm", "yarn"]);
   const packageOperation = packageManagers.has(base) && !!sub && installActions.has(sub);
