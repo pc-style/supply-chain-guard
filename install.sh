@@ -6,6 +6,7 @@ INSTALL_DIR="${SCGUARD_INSTALL_DIR:-$HOME/.local/share/supply-chain-guard}"
 BIN_DIR="${SCGUARD_BIN_DIR:-$HOME/.local/bin}"
 BIN_PATH="$BIN_DIR/scguard"
 CONFIG_DIR="${SCGUARD_CONFIG_DIR:-$HOME/.config/supply-chain-guard}"
+CONFIG_PATH="${SCGUARD_CONFIG_PATH:-$CONFIG_DIR/config.json}"
 ENV_PATH="$CONFIG_DIR/env"
 
 ACTION="install"
@@ -31,6 +32,7 @@ Environment overrides:
   SCGUARD_INSTALL_DIR       Default: \$HOME/.local/share/supply-chain-guard
   SCGUARD_BIN_DIR           Default: \$HOME/.local/bin
   SCGUARD_CONFIG_DIR        Default: \$HOME/.config/supply-chain-guard
+  SCGUARD_CONFIG_PATH       Default: \$HOME/.config/supply-chain-guard/config.json
 EOF
       exit 0
       ;;
@@ -121,6 +123,19 @@ fi
 mkdir -p "$BIN_DIR"
 mkdir -p "$CONFIG_DIR"
 
+WAS_INSTALLED=0
+if [ -d "$INSTALL_DIR/.git" ] || [ -f "$BIN_PATH" ] || [ -L "$BIN_PATH" ]; then
+  WAS_INSTALLED=1
+fi
+
+echo
+cat <<EOF
+WARNING: Supply Chain Guard is VERY VERY EARLY STAGE software.
+It can miss malicious packages, flag safe packages, and break package-manager flows.
+Use it as a local warning layer, not as proof that dependencies are safe.
+EOF
+echo
+
 if [ -d "$INSTALL_DIR/.git" ]; then
   echo "Updating Supply Chain Guard in $INSTALL_DIR"
   git -C "$INSTALL_DIR" pull --ff-only
@@ -132,52 +147,66 @@ fi
 
 cd "$INSTALL_DIR"
 bun install
-chmod +x src/cli.ts
+bun run build
+chmod +x dist/scguard
 
 echo
-echo "Socket API token setup"
-echo "Create a token here: https://socket.dev/dashboard/settings/api-tokens"
-echo "Recommended minimum scope for current package score lookup: packages:list"
-echo "Optional future active-incident feed scope: threat-feed:list"
-printf "Paste Socket API token, or press Enter to skip: "
-SOCKET_TOKEN_INPUT=""
-if ! { IFS= read -r SOCKET_TOKEN_INPUT < /dev/tty; } 2>/dev/null; then
-  IFS= read -r SOCKET_TOKEN_INPUT || true
-fi
+if [ "$WAS_INSTALLED" -eq 1 ] || [ -f "$CONFIG_PATH" ] || [ -f "$ENV_PATH" ]; then
+  echo "Existing install/config detected; skipping token setup."
+else
+  echo "Socket API token setup"
+  echo "Create a token here: https://socket.dev/dashboard/settings/api-tokens"
+  echo "Recommended minimum scope for current package score lookup: packages:list"
+  echo "Optional future active-incident feed scope: threat-feed:list"
+  printf "Paste Socket API token, or press Enter to skip: "
+  SOCKET_TOKEN_INPUT=""
+  if ! { IFS= read -r SOCKET_TOKEN_INPUT < /dev/tty; } 2>/dev/null; then
+    IFS= read -r SOCKET_TOKEN_INPUT || true
+  fi
 
-if [ -n "$SOCKET_TOKEN_INPUT" ]; then
-  umask 077
-  cat > "$ENV_PATH" <<EOF
+  if [ -n "$SOCKET_TOKEN_INPUT" ]; then
+    umask 077
+    cat > "$ENV_PATH" <<EOF
 export SOCKET_API_KEY="$SOCKET_TOKEN_INPUT"
 EOF
-  echo "Saved Socket token env to $ENV_PATH"
-elif [ ! -f "$ENV_PATH" ]; then
-  umask 077
-  cat > "$ENV_PATH" <<EOF
+    echo "Saved Socket token env to $ENV_PATH"
+  elif [ ! -f "$ENV_PATH" ]; then
+    umask 077
+    cat > "$ENV_PATH" <<EOF
 # Optional Socket token for API-backed package scoring.
 # Create one at https://socket.dev/dashboard/settings/api-tokens
 # Recommended minimum scope: packages:list
 # export SOCKET_API_KEY="..."
 EOF
+  fi
 fi
 
 cat > "$BIN_PATH" <<EOF
 #!/usr/bin/env bash
 [ -f "$ENV_PATH" ] && source "$ENV_PATH"
-exec bun run "$INSTALL_DIR/src/cli.ts" "\$@"
+exec "$INSTALL_DIR/dist/scguard" "\$@"
 EOF
 chmod +x "$BIN_PATH"
 
-if { : < /dev/tty > /dev/tty; } 2>/dev/null; then
+if [ "$WAS_INSTALLED" -eq 1 ]; then
   echo
-  echo "Launching Supply Chain Guard config."
-  "$BIN_PATH" config < /dev/tty || echo "Config skipped. Run: scguard config"
+  echo "Existing install detected; skipping interactive config. Run 'scguard config' any time to change it."
+elif [ ! -f "$CONFIG_PATH" ]; then
+  if { : < /dev/tty > /dev/tty; } 2>/dev/null; then
+    echo
+    echo "Launching Supply Chain Guard config."
+    "$BIN_PATH" config < /dev/tty || echo "Config skipped. Run: scguard config"
+  else
+    echo
+    echo "Skipping interactive config because no TTY is available. Run: scguard config"
+  fi
 else
   echo
-  echo "Skipping interactive config because no TTY is available. Run: scguard config"
+  echo "Existing config found at $CONFIG_PATH; run 'scguard config' any time to change it."
 fi
 
 echo
+
 echo "Installed: $BIN_PATH"
 echo
 
@@ -203,6 +232,8 @@ esac
 
 if grep -q 'scguard shell-hook' "$PROFILE" 2>/dev/null; then
   echo "Shell hook already in $PROFILE"
+elif [ "$WAS_INSTALLED" -eq 1 ]; then
+  echo "Existing install detected; skipping shell hook prompt. Run 'scguard shell-hook' to add it manually."
 else
   HOOK_INPUT=""
   printf "Add shell hook (guards bun/npm/pnpm/yarn/code) to %s? [Y/n] " "$PROFILE"

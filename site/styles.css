@@ -323,6 +323,23 @@ main { position: relative; z-index: 1; max-width: var(--max); margin: 0 auto; pa
   flex-shrink: 0;
 }
 
+.early-warning {
+  max-width: 560px;
+  margin: -8px 0 28px;
+  padding: 14px 16px;
+  border: 1px solid rgba(185, 28, 28, 0.22);
+  border-radius: var(--r-md);
+  background: rgba(185, 28, 28, 0.075);
+  color: var(--on-cream-muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.early-warning strong {
+  color: var(--red);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
 .hero-actions {
   display: flex;
   flex-wrap: wrap;

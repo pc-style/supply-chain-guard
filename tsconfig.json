@@ -1,11 +1,1 @@
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "strict": true,
-    "noEmit": true,
-    "types": ["bun"]
-  },
-  "include": ["src/**/*.ts"]
-}
+{"compilerOptions":{"target":"ES2022","module":"ESNext","moduleResolution":"Bundler","strict":true,"noEmit":true,"types":["bun"]},"include":["src/**/*.ts","scripts/**/*.ts"]}

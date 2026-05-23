@@ -16,7 +16,7 @@
     <link rel="canonical" href="https://supply-chain-guard-five.vercel.app/" />
 
     <meta property="og:title" content="Supply Chain Guard" />
-    <meta property="og:description" content="A local review step before npm and VS Code installs. Catches lifecycle scripts, credential reads, and suspicious payloads locally." />
+    <meta property="og:description" content="Very early-stage local review step before npm and VS Code installs. Catches lifecycle scripts, credential reads, and suspicious payloads locally." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://supply-chain-guard-five.vercel.app/" />
     <meta property="og:image" content="https://supply-chain-guard-five.vercel.app/og-image.png" />
@@ -25,7 +25,7 @@
     <meta property="og:site_name" content="Supply Chain Guard" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Supply Chain Guard" />
-    <meta name="twitter:description" content="A local review step before npm and VS Code installs." />
+    <meta name="twitter:description" content="Very early-stage local review step before npm and VS Code installs." />
     <meta name="twitter:image" content="https://supply-chain-guard-five.vercel.app/og-image.png" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -102,6 +102,11 @@
                 Fast, local, no telemetry
               </li>
             </ul>
+
+            <div class="early-warning" role="note" aria-label="Early stage warning">
+              <strong>VERY VERY EARLY STAGE.</strong>
+              This tool can miss malicious packages, flag safe packages, and break package-manager flows. Use it as a local warning layer, not proof that dependencies are safe.
+            </div>
 
             <div class="hero-actions">
               <button class="btn btn-dark" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/pc-style/supply-chain-guard/main/install.sh | bash" aria-label="Copy install command">

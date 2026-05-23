@@ -2,6 +2,9 @@
 
 A local review step for npm packages and VS Code extensions — inspect the artifact before it touches your project.
 
+> [!WARNING]
+> Supply Chain Guard is **VERY VERY EARLY STAGE** software. It can miss malicious packages, flag safe packages, and break package-manager flows. Treat it as a local warning layer, not proof that a dependency is safe.
+
 Website: [supply-chain-guard-five.vercel.app](https://supply-chain-guard-five.vercel.app)
 
 ## Quick Start
@@ -38,7 +41,7 @@ It is meant for the moment right before you run `bun add`, `npm install`, or `co
 curl -fsSL https://raw.githubusercontent.com/pc-style/supply-chain-guard/main/install.sh | bash
 ```
 
-The installer is also the updater. It clones or pulls this repo into `~/.local/share/supply-chain-guard`, runs `bun install`, creates `~/.local/bin/scguard`, and opens the config menu when a TTY is available.
+The installer is also the updater. It clones or pulls this repo into `~/.local/share/supply-chain-guard`, runs `bun install`, builds a compiled Bun executable, and creates `~/.local/bin/scguard`. First install opens token/config/shell-hook prompts when a TTY is available; updates skip those prompts if an existing install or config is detected.
 
 ## Demo
 

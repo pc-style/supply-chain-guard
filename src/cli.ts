@@ -1,13 +1,13 @@
 #!/usr/bin/env bun
-import { dirname, join, resolve } from "node:path";
+import { resolve } from "node:path";
 import {
-  CLI_ENTRY,
   ensureDirs,
   readJson,
   readOption,
   requireArg,
 } from "./core";
 import type { Report } from "./core";
+import { BUILD_COMMIT, BUILD_VERSION } from "./buildInfo";
 import { scanNpm, scanNpmStage, scanVsix } from "./analysis";
 import {
   resolveAgentMode,
@@ -50,8 +50,7 @@ async function main() {
   }
 
   if (cmd === "--version" || cmd === "-v" || cmd === "version") {
-    const pkg = await readJson<{ version: string }>(join(dirname(CLI_ENTRY), "..", "package.json"));
-    console.log(pkg.version);
+    console.log(formatVersion());
     return;
   }
 
@@ -159,6 +158,10 @@ async function main() {
   throw new Error(`Unknown command: ${cmd}`);
 }
 
+function formatVersion() {
+  return BUILD_COMMIT === "dev" ? BUILD_VERSION : `${BUILD_VERSION} (${BUILD_COMMIT})`;
+}
+
 function normalizeArgv(argv: string[]) {
   const raw = argv.slice(1);
   const first = raw[0] ?? "";
@@ -169,8 +172,10 @@ function normalizeArgv(argv: string[]) {
 }
 
 async function help() {
-  const pkg = await readJson<{ version: string }>(join(dirname(CLI_ENTRY), "..", "package.json")).catch(() => ({ version: "0.0.0" }));
-  console.log(banner(pkg.version));
+  console.log(banner(formatVersion()));
+  console.log("");
+  console.log(`${c.red("WARNING:", true)} ${c.white("Supply Chain Guard is VERY VERY EARLY STAGE.", true)}`);
+  console.log(c.gray("It can miss malicious packages, flag safe ones, and break package-manager flows. Treat it as a warning layer, not proof of safety."));
   console.log("");
   section("Common");
   item("scguard review", "<package[@version]> [--agent codex|pi|both] [--sbom] [--offline]", "Download, stage, and analyze a package without installing it.");
