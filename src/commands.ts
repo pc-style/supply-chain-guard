@@ -650,7 +650,6 @@ const VALUE_OPTIONS = new Set([
   "--scope",
   "--workspace",
   "-w",
-  "--workspaces",
 ]);
 
 function extractSpecs(base: string, args: string[]) {

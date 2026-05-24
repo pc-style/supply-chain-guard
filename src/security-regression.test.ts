@@ -60,6 +60,14 @@ describe("security regressions", () => {
     expect(result.specs).toEqual([]);
   });
 
+  test("--workspaces is a boolean flag, not value-taking", () => {
+    expect(findPackageSubcommand(["--workspaces", "install", "lodash"])).toBe("install");
+    const result = classifyPackageCommand("npm", ["--workspaces", "install", "lodash"]);
+    expect(result.packageOperation).toBe(true);
+    expect(result.action).toBe("install");
+    expect(result.specs).toEqual(["lodash"]);
+  });
+
   test("default preset scans entire lockfile when no baseline exists", () => {
     const selection = planLockfileSelection(
       [{ name: "old-pkg", version: "9.9.9" }],
