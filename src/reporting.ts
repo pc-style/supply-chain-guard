@@ -189,7 +189,7 @@ function intelligenceLines(report: Report) {
   const lines: string[] = [];
   const socket = report.intelligence.socket;
   if (socket) {
-    lines.push(`- Socket: ${socket.status}${typeof socket.supplyChainRisk === "number" ? `; supplyChainRisk=${socket.supplyChainRisk} (0=lowest risk, 1=highest risk; guard currently flags <=0.3 as suspicious legacy low-score threshold)` : ""}${socket.message ? `; ${socket.message}` : ""}`);
+    lines.push(`- Socket: ${socket.status}${typeof socket.supplyChainRisk === "number" ? `; supplyChainRisk=${socket.supplyChainRisk} (0=lowest risk, 1=highest risk; guard flags supplyChainRisk >= 0.3 (0=lowest, 1=highest))` : ""}${socket.message ? `; ${socket.message}` : ""}`);
     const components = socketRiskComponents(socket.rawScore).slice(0, 8);
     if (components.length) lines.push(`  - Socket components: ${components.join(", ")}`);
   } else lines.push("- Socket: not-applicable");

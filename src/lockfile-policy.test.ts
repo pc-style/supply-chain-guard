@@ -57,16 +57,21 @@ describe("lockfile policy selection", () => {
     expect(selection.selected[0]?.reason).toBe("changed-lockfile-entry");
   });
 
-  test("strict-ci uses a 30-day freshness window", () => {
+  test("strict-ci uses a 30-day freshness window once a baseline exists", () => {
+    const baseline = {
+      schemaVersion: 1 as const,
+      generatedAt: "2026-05-22T00:00:00Z",
+      entries: [{ name: "borderline-pkg", version: "1.0.0" }],
+    };
     const selected = planLockfileSelection(
       [{ name: "borderline-pkg", version: "1.0.0" }],
-      null,
+      baseline,
       "strict-ci",
       new Map([["borderline-pkg@1.0.0", age(29 * 24)]]),
     );
     const skipped = planLockfileSelection(
       [{ name: "borderline-pkg", version: "1.0.0" }],
-      null,
+      baseline,
       "strict-ci",
       new Map([["borderline-pkg@1.0.0", age(31 * 24)]]),
     );
@@ -74,6 +79,17 @@ describe("lockfile policy selection", () => {
     expect(selected.selected[0]?.reason).toBe("fresh-version");
     expect(skipped.selected).toHaveLength(0);
     expect(skipped.skipped).toHaveLength(1);
+  });
+
+  test("strict-ci scans the full lockfile when no baseline exists", () => {
+    const selection = planLockfileSelection(
+      [{ name: "old-pkg", version: "1.0.0" }],
+      null,
+      "strict-ci",
+      new Map([["old-pkg@1.0.0", age(400 * 24)]]),
+    );
+    expect(selection.selected).toHaveLength(1);
+    expect(selection.selected[0]?.reason).toBe("policy");
   });
 
   test("selects packages when freshness lookup fails", () => {

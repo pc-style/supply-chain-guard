@@ -25,7 +25,7 @@ import {
   writeConfig,
 } from "./core";
 import type { AgentMode, LockfileBaseline, PackageAgeResult, PolicyPreset, ScanReason } from "./core";
-import { freshnessWindowHoursForPreset, scanNpm, scanNpmStage, scanVsix } from "./analysis";
+import { freshnessWindowHoursForPreset, scanNpm, scanNpmLockfileEntry, scanNpmStage, scanVsix } from "./analysis";
 import { resolveAgentMode, runAgentReviews } from "./integrations";
 import { checkPackageAge } from "./integrations";
 import { blockOnFailedReview, emitReport } from "./reporting";
@@ -375,7 +375,7 @@ export async function scanLockfile(cwd: string, args: string[] = []): Promise<Lo
   if (baseline) {
     console.log(`  ${c.gray("baseline:")} ${c.white(String(baseline.entries.length))} ${c.dim(`saved ${baseline.generatedAt}`)}`);
   } else {
-    console.log(`  ${c.gray("baseline:")} ${c.dim("none (fresh packages only)")}`);
+    console.log(`  ${c.gray("baseline:")} ${c.dim("none (full lockfile scan on first bare install)")}`);
   }
 
   const summary: LockfileScanSummary = {
@@ -408,9 +408,8 @@ export async function scanLockfile(cwd: string, args: string[] = []): Promise<Lo
       if (i >= plan.selected.length) return;
       const selection = plan.selected[i];
       const entry = selection.entry;
-      const spec = `${entry.name}@${entry.version}`;
       try {
-        const report = await scanNpm(spec, { offline, packageAge: selection.packageAge });
+        const report = await scanNpmLockfileEntry(entry, { offline, packageAge: selection.packageAge });
         summary.scanned++;
         const reportPath = await emitReport(report, false);
         if (!report.summary.installAllowed) {
@@ -513,6 +512,11 @@ export function planLockfileSelection(
       continue;
     }
 
+    if (!baselineSet && preset !== "quiet") {
+      selected.push({ entry, reason: "policy", packageAge: age });
+      continue;
+    }
+
     if (preset === "quiet") {
       if (fresh) selected.push({ entry, reason: "fresh-version", packageAge: age });
       else skipped.push({ entry, reason: "outside-fresh-window" });
@@ -563,13 +567,16 @@ function lockfileFailedScanError(summary: LockfileScanSummary): Error {
 
 export function classifyPackageCommand(command: string, args: string[]) {
   const base = basename(command);
-  if (base === "npm" && args[0] === "stage" && args[1] === "approve") {
-    return {
-      packageOperation: true,
-      kind: "npm-stage" as const,
-      action: "stage approve",
-      specs: args[2] ? [args[2]] : [],
-    };
+  if (base === "npm") {
+    const npmTokens = nonOptionTokens(args);
+    if (npmTokens[0] === "stage" && npmTokens[1] === "approve") {
+      return {
+        packageOperation: true,
+        kind: "npm-stage" as const,
+        action: "stage approve",
+        specs: npmTokens[2] ? [npmTokens[2]] : [],
+      };
+    }
   }
   if (base === "code" && args.includes("--install-extension")) {
     const index = args.indexOf("--install-extension");
@@ -580,7 +587,7 @@ export function classifyPackageCommand(command: string, args: string[]) {
       specs: args[index + 1] ? [args[index + 1]] : [],
     };
   }
-  const sub = args.find((arg) => !arg.startsWith("-"));
+  const sub = findPackageSubcommand(args);
   // Package manager self-updates are not untrusted package operations.
   if (base === "bun" && sub === "upgrade") {
     return { packageOperation: false, kind: "npm" as const, action: sub, specs: [] };
@@ -593,6 +600,27 @@ export function classifyPackageCommand(command: string, args: string[]) {
   const packageOperation = packageManagers.has(base) && !!sub && installActions.has(sub);
   const specs = packageOperation ? extractSpecs(base, args) : [];
   return { packageOperation, kind: "npm" as const, action: sub ?? "run", specs };
+}
+
+export function findPackageSubcommand(args: string[]): string | undefined {
+  return nonOptionTokens(args)[0];
+}
+
+export function nonOptionTokens(args: string[]): string[] {
+  const tokens: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg.startsWith("-")) {
+      if (arg.includes("=")) continue;
+      if (VALUE_OPTIONS.has(arg)) {
+        i++;
+        continue;
+      }
+      continue;
+    }
+    tokens.push(arg);
+  }
+  return tokens;
 }
 
 // Options across npm/bun/pnpm/yarn install commands whose next argument is
@@ -620,26 +648,17 @@ const VALUE_OPTIONS = new Set([
   "--libc",
   "--node-options",
   "--scope",
+  "--workspace",
+  "-w",
+  "--workspaces",
 ]);
 
 function extractSpecs(base: string, args: string[]) {
-  const actionIndex = args.findIndex((arg) => !arg.startsWith("-"));
-  const rest = actionIndex === -1 ? [] : args.slice(actionIndex + 1);
-  if (base === "npm" && (args[actionIndex] === "ci" || rest.length === 0)) return [];
-  const specs: string[] = [];
-  for (let i = 0; i < rest.length; i++) {
-    const arg = rest[i];
-    if (arg.startsWith("-")) {
-      // `--key=value` carries its value inline; skip the flag only.
-      if (arg.includes("=")) continue;
-      // For known value-taking options, also skip the following argument.
-      if (VALUE_OPTIONS.has(arg)) i++;
-      continue;
-    }
-    if (arg.includes("=")) continue;
-    specs.push(arg);
-  }
-  return specs;
+  const tokens = nonOptionTokens(args);
+  const sub = tokens[0];
+  const rest = sub ? tokens.slice(1) : [];
+  if (base === "npm" && (sub === "ci" || rest.length === 0)) return [];
+  return rest.filter((arg) => !arg.includes("="));
 }
 
 export function stripGuardOptions(args: string[]) {
@@ -658,7 +677,8 @@ export function stripGuardOptions(args: string[]) {
   return stripped;
 }
 
-export function shellHook() {
+export function shellHook(shell: "bash" | "fish" = "bash") {
+  if (shell === "fish") return shellHookFish();
   const entry = CLI_ENTRY;
   return `[ -f "${CONFIG_ENV_PATH}" ] && source "${CONFIG_ENV_PATH}"
 export SCGUARD_SHELL_HOOK_ACTIVE=1
@@ -668,6 +688,33 @@ npm() { command bun run ${entry} guard npm "$@"; }
 pnpm() { command bun run ${entry} guard pnpm "$@"; }
 yarn() { command bun run ${entry} guard yarn "$@"; }
 code() { command bun run ${entry} guard code "$@"; }
+`;
+}
+
+export function shellHookFish() {
+  const entry = CLI_ENTRY;
+  return `if test -f "${CONFIG_ENV_PATH}"
+    source "${CONFIG_ENV_PATH}"
+end
+set -gx SCGUARD_SHELL_HOOK_ACTIVE 1
+function scguard
+    command bun run ${entry} $argv
+end
+function bun
+    command bun run ${entry} guard bun $argv
+end
+function npm
+    command bun run ${entry} guard npm $argv
+end
+function pnpm
+    command bun run ${entry} guard pnpm $argv
+end
+function yarn
+    command bun run ${entry} guard yarn $argv
+end
+function code
+    command bun run ${entry} guard code $argv
+end
 `;
 }
 

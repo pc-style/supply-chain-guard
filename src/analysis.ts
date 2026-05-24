@@ -53,27 +53,86 @@ const PATTERNS_SCRIPTS_ONLY: Array<[RegExp, string, Risk, string]> = [
   [/process\.env/i, "env-access", "medium", "Reads process environment variables in a lifecycle script."],
 ];
 
-export async function scanNpm(spec: string, options: { offline?: boolean; packageAge?: PackageAgeResult } = {}): Promise<Report> {
+export type ScanNpmOptions = {
+  offline?: boolean;
+  packageAge?: PackageAgeResult;
+  /** Lockfile-pinned tarball URL — must be scanned instead of registry metadata resolution. */
+  pinnedTarball?: string;
+  /** Lockfile subresource integrity (sha512-...). */
+  pinnedIntegrity?: string;
+};
+
+export async function scanNpm(spec: string, options: ScanNpmOptions = {}): Promise<Report> {
   const parsedSpec = parsePackageSpec(spec);
   const requestedName = parsedSpec.name;
   const requestedVersion = parsedSpec.version;
+  if (requestedVersion && !isRegistryVersionSpec(requestedVersion)) {
+    throw new Error(
+      `Cannot scan non-registry spec ${spec}. Use a registry version/range (e.g. name@1.2.3 or name@^1.0.0), not ${requestedVersion}.`,
+    );
+  }
   debug(`resolving ${spec}`);
   const meta = await resolveNpm(spec);
-  const tarball = String(meta.dist.tarball);
   const resolvedName = String(meta.name);
   const version = String(meta.version);
-  const safeName = resolvedName.replaceAll("/", "_").replaceAll("@", "");
+  const tarball = options.pinnedTarball ?? String(meta.dist.tarball);
+  if (options.pinnedTarball && !isAllowedPinnedTarballUrl(options.pinnedTarball)) {
+    throw new Error(`Refusing to download lockfile artifact from untrusted URL: ${options.pinnedTarball}`);
+  }
+  return scanNpmArtifact({
+    name: resolvedName,
+    version,
+    tarball,
+    integrity: options.pinnedIntegrity ?? (meta.dist?.integrity ? String(meta.dist.integrity) : undefined),
+    dist: meta.dist ?? {},
+    requestedName,
+    requestedVersion,
+    offline: options.offline,
+    packageAge: options.packageAge,
+    scanReason: "direct-review",
+  });
+}
+
+export async function scanNpmLockfileEntry(
+  entry: { name: string; version: string; resolved?: string; integrity?: string },
+  options: { offline?: boolean; packageAge?: PackageAgeResult } = {},
+): Promise<Report> {
+  const spec = `${entry.name}@${entry.version}`;
+  if (entry.resolved) {
+    return scanNpm(spec, {
+      offline: options.offline,
+      packageAge: options.packageAge,
+      pinnedTarball: entry.resolved,
+      pinnedIntegrity: entry.integrity,
+    });
+  }
+  return scanNpm(spec, { offline: options.offline, packageAge: options.packageAge });
+}
+
+async function scanNpmArtifact(context: {
+  name: string;
+  version: string;
+  tarball: string;
+  integrity?: string;
+  dist: Record<string, unknown>;
+  requestedName: string;
+  requestedVersion?: string;
+  offline?: boolean;
+  packageAge?: PackageAgeResult;
+  scanReason: ScanReason;
+}): Promise<Report> {
+  const { name, version, tarball, integrity, dist, requestedName, requestedVersion, offline, packageAge, scanReason } = context;
+  const safeName = name.replaceAll("/", "_").replaceAll("@", "");
   const artifactPath = join(CACHE_DIR, `${safeName}-${version}.tgz`);
-  const offlineOpt = { offline: options.offline };
-  // Fan out intelligence lookups in parallel with the (cached or fresh) tarball download.
-  const packageAgePromise = options.packageAge
-    ? Promise.resolve(options.packageAge)
-    : checkPackageAge(resolvedName, version, offlineOpt);
+  const offlineOpt = { offline };
+  const packageAgePromise = packageAge
+    ? Promise.resolve(packageAge)
+    : checkPackageAge(name, version, offlineOpt);
   const intelPromise = Promise.all([
-    checkSocket(resolvedName, version, offlineOpt),
-    checkOsv(resolvedName, version, offlineOpt),
+    checkSocket(name, version, offlineOpt),
+    checkOsv(name, version, offlineOpt),
     packageAgePromise,
-    verifyNpmSignatures(resolvedName, version, meta.dist ?? {}, offlineOpt),
+    verifyNpmSignatures(name, version, dist, offlineOpt),
   ]);
   if (await Bun.file(artifactPath).exists()) {
     debug(`cache hit ${artifactPath}`);
@@ -85,37 +144,36 @@ export async function scanNpm(spec: string, options: { offline?: boolean; packag
   const extracted = await extractTarball(artifactPath);
   const packageDir = await findPackageRoot(extracted);
   debug(`analyzing ${packageDir}`);
-  const [socket, osv, packageAge, npmSignature] = await intelPromise;
+  const [socket, osv, resolvedPackageAge, npmSignature] = await intelPromise;
   const config = await readConfig();
   const reportPolicy = await buildReportPolicy({
     preset: config.preset,
     safeResolver: config.safeResolver,
-    scanReason: "direct-review",
+    scanReason,
   }, {
     requestedVersion,
     resolvedVersion: version,
-    packageAge,
+    packageAge: resolvedPackageAge,
     name: requestedName,
-    offline: options.offline,
+    offline,
   });
-  const typosquat = checkTyposquat(resolvedName);
-  const report = await analyzeDirectory(`${resolvedName}@${version}`, "npm", packageDir, tarball, artifactPath, {
+  const typosquat = checkTyposquat(name);
+  const report = await analyzeDirectory(`${name}@${version}`, "npm", packageDir, tarball, artifactPath, {
     socket,
     osv,
-    packageAge,
+    packageAge: resolvedPackageAge,
     npmSignature,
     typosquat,
   }, reportPolicy);
-  const expectedIntegrity = meta.dist?.integrity ? String(meta.dist.integrity) : undefined;
-  if (expectedIntegrity) {
-    const ok = await verifyIntegrity(artifactPath, expectedIntegrity);
+  if (integrity) {
+    const ok = await verifyIntegrity(artifactPath, integrity);
     if (!ok) {
       report.findings.unshift({
         id: "artifact.integrity-mismatch",
         title: "Tarball integrity mismatch",
         severity: "high",
-        evidence: `Registry integrity: ${expectedIntegrity}; downloaded file does not match`,
-        recommendation: "Do not install. The downloaded tarball differs from the registry manifest — possible tampering or CDN corruption.",
+        evidence: `Expected integrity: ${integrity}; downloaded file does not match`,
+        recommendation: "Do not install. The downloaded tarball differs from the lockfile/registry digest — possible tampering.",
       });
       report.summary.risk = "high";
       report.summary.installAllowed = false;
@@ -123,6 +181,19 @@ export async function scanNpm(spec: string, options: { offline?: boolean; packag
     }
   }
   return report;
+}
+
+function isAllowedPinnedTarballUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:") return false;
+    const host = parsed.hostname.toLowerCase();
+    return host === "registry.npmjs.org"
+      || host.endsWith(".npmjs.org")
+      || host.endsWith(".npmmirror.com");
+  } catch {
+    return false;
+  }
 }
 
 export async function scanVsix(file: string): Promise<Report> {
@@ -221,12 +292,12 @@ export async function analyzeDirectory(
 function inspectIntelligence(intelligence: Partial<Report["intelligence"]>, findings: Finding[]) {
   if (intelligence.socket?.status === "checked") {
     const score = intelligence.socket.supplyChainRisk;
-    if (typeof score === "number" && score <= 0.3) {
+    if (typeof score === "number" && score >= 0.3) {
       findings.push({
         id: "socket.supply-chain-risk",
-        title: "Socket reports a low supply-chain score",
-        severity: score <= 0.1 ? "high" : "medium",
-        evidence: `supplyChainRiskScore=${score}`,
+        title: "Socket reports elevated supply-chain risk",
+        severity: score >= 0.7 ? "high" : "medium",
+        evidence: `supplyChainRiskScore=${score} (0=lowest risk, 1=highest risk)`,
         recommendation: "Require agent review and inspect Socket package details before installing.",
       });
     }
@@ -492,6 +563,9 @@ export async function resolveNpm(spec: string): Promise<Record<string, any>> {
   }
   // Direct registry HTTP fallback (no npm required).
   const { name, version } = parsePackageSpec(spec);
+  if (version && !isRegistryVersionSpec(version)) {
+    throw new Error(`Cannot resolve non-registry version spec: ${version}`);
+  }
   const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(name).replace("%40", "@")}`);
   if (!res.ok) throw new Error(`Registry lookup failed for ${name}: ${res.status}`);
   const data = await res.json() as Record<string, any>;
@@ -504,8 +578,24 @@ export async function resolveNpm(spec: string): Promise<Record<string, any>> {
   return meta;
 }
 
+export function isRegistryVersionSpec(version: string): boolean {
+  if (!version || version.includes("://")) return false;
+  if (/^(workspace|file|link|git|github|patch|portal|catalog|npm):/i.test(version)) return false;
+  if (/^git\+/i.test(version)) return false;
+  if (version.startsWith(".") || version.startsWith("/")) return false;
+  if (/^\d+\.\d+\.\d+/.test(version)) return true;
+  if (/^[~^>=<]/.test(version) || version.includes("||") || version.includes(" - ") || /\d+\.x/.test(version)) {
+    return true;
+  }
+  if (/^[a-zA-Z][a-zA-Z0-9._-]*$/.test(version) && !version.includes("/") && !version.includes(":")) {
+    return true;
+  }
+  return false;
+}
+
 export function resolveNpmVersion(versions: string[], distTags: Record<string, string>, requested: string | undefined): string | undefined {
   if (!requested) return distTags.latest;
+  if (!isRegistryVersionSpec(requested)) return undefined;
   if (versions.includes(requested)) return requested;
   if (distTags[requested]) return distTags[requested];
   const matches = versions

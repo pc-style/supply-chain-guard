@@ -474,7 +474,11 @@ export async function verifyNpmSignatures(
         return { status: "unverified", keyid: sig.keyid, message: `Signature verification failed for keyid ${sig.keyid}.` };
       }
       if (!isKeyUsable(key)) {
-        return { status: "verified", keyid: sig.keyid, message: `Signature verified with expired key ${sig.keyid} (expires=${key.expires}).` };
+        return {
+          status: "unverified",
+          keyid: sig.keyid,
+          message: `Signature was produced with an expired signing key ${sig.keyid} (expires=${key.expires}).`,
+        };
       }
     }
     return { status: "verified", keyid: signatures[0].keyid };

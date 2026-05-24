@@ -166,9 +166,8 @@ else
 
   if [ -n "$SOCKET_TOKEN_INPUT" ]; then
     umask 077
-    cat > "$ENV_PATH" <<EOF
-export SOCKET_API_KEY="$SOCKET_TOKEN_INPUT"
-EOF
+    # Quote the token safely so sourcing the env file cannot execute shell metacharacters.
+    printf 'export SOCKET_API_KEY=%s\n' "$(printf '%s' "$SOCKET_TOKEN_INPUT" | sed "s/'/'\\\\''/g; s/^/'/; s/$/'/")" > "$ENV_PATH"
     echo "Saved Socket token env to $ENV_PATH"
   elif [ ! -f "$ENV_PATH" ]; then
     umask 077
@@ -248,7 +247,7 @@ else
       mkdir -p "$(dirname "$PROFILE")"
       case "${SHELL:-}" in
         *fish*)
-          printf '\n# Supply Chain Guard — intercept package manager installs\neval (scguard shell-hook)\n' >> "$PROFILE"
+          printf '\n# Supply Chain Guard — intercept package manager installs\neval (scguard shell-hook --fish)\n' >> "$PROFILE"
           ;;
         *)
           printf '\n# Supply Chain Guard — intercept package manager installs\neval "$(scguard shell-hook)"\n' >> "$PROFILE"
