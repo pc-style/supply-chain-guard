@@ -141,7 +141,8 @@ async function main() {
   }
 
   if (cmd === "shell-hook") {
-    console.log(shellHook());
+    const fish = args.includes("--fish") || Bun.env.SCGUARD_SHELL === "fish";
+    console.log(shellHook(fish ? "fish" : "bash"));
     return;
   }
 
@@ -186,7 +187,7 @@ async function help() {
   item("scguard config", "[--show] [--preset quiet|default|strict-ci|enterprise|advisory] [--safe-resolver off|suggest] [--agent none|codex|pi|both]", "Set the default policy preset, safe resolver mode, and agent-review policy.");
 
   section("Setup");
-  item("scguard shell-hook", "", "Print shell functions that route bun/npm/pnpm/yarn/code through scguard.");
+  item("scguard shell-hook", "[--fish]", "Print shell functions that route bun/npm/pnpm/yarn/code through scguard (use --fish for fish shell).");
   item("scguard version", "", "Print the installed version.");
 
   section("Advanced");

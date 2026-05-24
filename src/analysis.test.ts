@@ -2,7 +2,7 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { analyzeDirectory, parsePackageSpec, pickSafeResolverSuggestion, resolveNpmVersion } from "./analysis";
+import { analyzeDirectory, isRegistryVersionSpec, parsePackageSpec, pickSafeResolverSuggestion, resolveNpmVersion } from "./analysis";
 
 // ---------------------------------------------------------------------------
 // parsePackageSpec
@@ -61,6 +61,24 @@ describe("resolveNpmVersion", () => {
   });
   test("missing version", () => {
     expect(resolveNpmVersion(versions, distTags, "9.9.9")).toBeUndefined();
+  });
+
+  test("protocol specs do not resolve to a registry version", () => {
+    expect(resolveNpmVersion(versions, distTags, "github:evil/pkg")).toBeUndefined();
+    expect(resolveNpmVersion(versions, distTags, "file:/tmp/evil.tgz")).toBeUndefined();
+  });
+});
+
+describe("isRegistryVersionSpec", () => {
+  test("accepts semver ranges and dist-tags", () => {
+    expect(isRegistryVersionSpec("^18.0.0")).toBe(true);
+    expect(isRegistryVersionSpec("latest")).toBe(true);
+    expect(isRegistryVersionSpec("1.2.3")).toBe(true);
+  });
+
+  test("rejects package-manager protocol specs", () => {
+    expect(isRegistryVersionSpec("workspace:*")).toBe(false);
+    expect(isRegistryVersionSpec("file:../evil")).toBe(false);
   });
 });
 

@@ -12,7 +12,7 @@ Website: [scguard.pcstyle.dev](https://scguard.pcstyle.dev/)
 **1. Install**
 
 ```sh
-curl -fsSL https://scguard.pcstyle.dev/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/pc-style/supply-chain-guard/main/install.sh | bash
 ```
 
 **2. Activate the guard in your shell**
@@ -38,7 +38,7 @@ It is meant for the moment right before you run `bun add`, `npm install`, or `co
 ## Install Or Update
 
 ```sh
-curl -fsSL https://scguard.pcstyle.dev/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/pc-style/supply-chain-guard/main/install.sh | bash
 ```
 
 The installer is also the updater. It clones or pulls this repo into `~/.local/share/supply-chain-guard`, runs `bun install`, builds a compiled Bun executable, and creates `~/.local/bin/scguard`. First install opens token/config/shell-hook prompts when a TTY is available; updates skip those prompts if an existing install or config is detected.

@@ -6,6 +6,10 @@ export type LockfileKind = "npm" | "bun" | "pnpm" | "yarn";
 export interface LockfileEntry {
   name: string;
   version: string;
+  /** Exact tarball URL pinned in the lockfile (npm package-lock, etc.). */
+  resolved?: string;
+  /** Subresource integrity from the lockfile (e.g. sha512-...). */
+  integrity?: string;
 }
 
 export interface DetectedLockfile {
@@ -45,7 +49,18 @@ function dedupe(entries: LockfileEntry[]): LockfileEntry[] {
     if (!e.name || !e.version) continue;
     if (e.name.startsWith(".") || e.version.startsWith("file:") || e.version.startsWith("link:") || e.version.startsWith("workspace:")) continue;
     const key = `${e.name}@${e.version}`;
-    if (!seen.has(key)) seen.set(key, { name: e.name, version: e.version });
+    const existing = seen.get(key);
+    if (!existing) {
+      seen.set(key, {
+        name: e.name,
+        version: e.version,
+        ...(e.resolved ? { resolved: e.resolved } : {}),
+        ...(e.integrity ? { integrity: e.integrity } : {}),
+      });
+      continue;
+    }
+    if (!existing.resolved && e.resolved) existing.resolved = e.resolved;
+    if (!existing.integrity && e.integrity) existing.integrity = e.integrity;
   }
   return [...seen.values()].sort((a, b) => {
     const ka = `${a.name}@${a.version}`;
@@ -60,7 +75,13 @@ function dedupe(entries: LockfileEntry[]): LockfileEntry[] {
 export function parseNpm(text: string): LockfileEntry[] {
   const data = JSON.parse(text) as Record<string, unknown>;
   const out: LockfileEntry[] = [];
-  const packages = data.packages as Record<string, { name?: string; version?: string; resolved?: string; link?: boolean }> | undefined;
+  const packages = data.packages as Record<string, {
+    name?: string;
+    version?: string;
+    resolved?: string;
+    integrity?: string;
+    link?: boolean;
+  }> | undefined;
   if (packages) {
     for (const [path, info] of Object.entries(packages)) {
       if (!path || path === "" || info?.link) continue;
@@ -68,10 +89,20 @@ export function parseNpm(text: string): LockfileEntry[] {
       if (!version) continue;
       const name = info.name ?? nameFromNodeModulesPath(path);
       if (!name) continue;
-      out.push({ name, version });
+      out.push({
+        name,
+        version,
+        ...(typeof info.resolved === "string" ? { resolved: info.resolved } : {}),
+        ...(typeof info.integrity === "string" ? { integrity: info.integrity } : {}),
+      });
     }
   }
-  const deps = data.dependencies as Record<string, { version?: string; dependencies?: any }> | undefined;
+  const deps = data.dependencies as Record<string, {
+    version?: string;
+    resolved?: string;
+    integrity?: string;
+    dependencies?: Record<string, { version?: string; resolved?: string; integrity?: string; dependencies?: unknown }>;
+  }> | undefined;
   if (deps) walkNpmV1(deps, out);
   return dedupe(out);
 }
@@ -82,10 +113,22 @@ function nameFromNodeModulesPath(path: string): string | null {
   return path.slice(idx + "node_modules/".length);
 }
 
-function walkNpmV1(deps: Record<string, { version?: string; dependencies?: any }>, out: LockfileEntry[]) {
+function walkNpmV1(
+  deps: Record<string, { version?: string; resolved?: string; integrity?: string; dependencies?: Record<string, unknown> }>,
+  out: LockfileEntry[],
+) {
   for (const [name, info] of Object.entries(deps)) {
-    if (info?.version) out.push({ name, version: info.version });
-    if (info?.dependencies) walkNpmV1(info.dependencies, out);
+    if (info?.version) {
+      out.push({
+        name,
+        version: info.version,
+        ...(typeof info.resolved === "string" ? { resolved: info.resolved } : {}),
+        ...(typeof info.integrity === "string" ? { integrity: info.integrity } : {}),
+      });
+    }
+    if (info?.dependencies && typeof info.dependencies === "object") {
+      walkNpmV1(info.dependencies as typeof deps, out);
+    }
   }
 }
 

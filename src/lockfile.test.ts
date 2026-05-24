@@ -16,8 +16,35 @@ describe("parseNpm (lockfileVersion 3)", () => {
     const entries = parseNpm(text);
     expect(entries).toEqual([
       { name: "@scope/foo", version: "2.0.0" },
-      { name: "lodash", version: "4.17.21" },
+      {
+        name: "lodash",
+        version: "4.17.21",
+        resolved: "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz",
+      },
       { name: "react", version: "18.3.1" },
+    ]);
+  });
+
+  test("merges resolved/integrity from duplicate name@version paths", () => {
+    const text = JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        "node_modules/lodash": { version: "4.17.21" },
+        "node_modules/other/node_modules/lodash": {
+          version: "4.17.21",
+          resolved: "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz",
+          integrity: "sha512-abc123",
+        },
+      },
+    });
+    const entries = parseNpm(text);
+    expect(entries).toEqual([
+      {
+        name: "lodash",
+        version: "4.17.21",
+        resolved: "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz",
+        integrity: "sha512-abc123",
+      },
     ]);
   });
 
