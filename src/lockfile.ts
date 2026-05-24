@@ -49,14 +49,18 @@ function dedupe(entries: LockfileEntry[]): LockfileEntry[] {
     if (!e.name || !e.version) continue;
     if (e.name.startsWith(".") || e.version.startsWith("file:") || e.version.startsWith("link:") || e.version.startsWith("workspace:")) continue;
     const key = `${e.name}@${e.version}`;
-    if (!seen.has(key)) {
+    const existing = seen.get(key);
+    if (!existing) {
       seen.set(key, {
         name: e.name,
         version: e.version,
         ...(e.resolved ? { resolved: e.resolved } : {}),
         ...(e.integrity ? { integrity: e.integrity } : {}),
       });
+      continue;
     }
+    if (!existing.resolved && e.resolved) existing.resolved = e.resolved;
+    if (!existing.integrity && e.integrity) existing.integrity = e.integrity;
   }
   return [...seen.values()].sort((a, b) => {
     const ka = `${a.name}@${a.version}`;

@@ -25,6 +25,29 @@ describe("parseNpm (lockfileVersion 3)", () => {
     ]);
   });
 
+  test("merges resolved/integrity from duplicate name@version paths", () => {
+    const text = JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        "node_modules/lodash": { version: "4.17.21" },
+        "node_modules/other/node_modules/lodash": {
+          version: "4.17.21",
+          resolved: "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz",
+          integrity: "sha512-abc123",
+        },
+      },
+    });
+    const entries = parseNpm(text);
+    expect(entries).toEqual([
+      {
+        name: "lodash",
+        version: "4.17.21",
+        resolved: "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz",
+        integrity: "sha512-abc123",
+      },
+    ]);
+  });
+
   test("falls back to nested dependencies (lockfileVersion 1)", () => {
     const text = JSON.stringify({
       lockfileVersion: 1,
