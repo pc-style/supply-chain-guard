@@ -1,0 +1,12 @@
+{
+  "slug": "block-broad-update",
+  "title": "blocking a broad update",
+  "command": "bun update",
+  "cwd": "./demo",
+  "capturedAt": "2026-05-25T16:20:02.850Z",
+  "lines": [
+    "$ bun update",
+    "<span style=\"font-weight:600;color:rgb(248,113,113)\">error:</span> <span style=\"color:rgb(228,228,231)\">Broad package updates are blocked. Run the command with explicit package specs so each update can be staged and analyzed first.</span>"
+  ],
+  "plain": "$ bun update\n\u001b[0m\u001b[31m\u001b[1;38;2;248;113;113merror:\u001b[0m \u001b[38;2;228;228;231mBroad package updates are blocked. Run the command with explicit package specs so each update can be staged and analyzed first.\u001b[0m\u001b[0m"
+}

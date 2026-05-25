@@ -40,6 +40,7 @@
         <nav class="nav-links" aria-label="Primary">
           <a href="#checks">checks</a>
           <a href="#how">flow</a>
+          <a href="#demo">demo</a>
           <a href="#commands">cli</a>
         </nav>
         <a class="nav-cta" href="https://github.com/pc-style/supply-chain-guard" target="_blank" rel="noreferrer">github</a>
@@ -136,7 +137,20 @@
             <button class="ptab" data-shot="generated-reports" role="tab">reports</button>
           </div>
           <div class="player-bar" id="player-title">scanning an npm package</div>
-          <div class="player-frame"><img id="player-img" src="./screenshots/scan-npm.png" alt="Demo screenshot" width="1200" height="675" /></div>
+          <div class="player-frame" id="player-frame">
+            <div class="terminal" role="img" aria-label="Terminal demo output">
+              <div class="terminal-titlebar">
+                <span class="terminal-dot terminal-dot-red" aria-hidden="true"></span>
+                <span class="terminal-dot terminal-dot-yellow" aria-hidden="true"></span>
+                <span class="terminal-dot terminal-dot-green" aria-hidden="true"></span>
+                <span class="terminal-cmd" id="terminal-cmd">./demo $ scguard review chalk@5.4.1</span>
+              </div>
+              <pre class="terminal-body" id="terminal-body"><span class="term-line term-dim">loading captured output…</span></pre>
+            </div>
+            <noscript>
+              <img src="./screenshots/scan-npm.png" alt="scguard review chalk demo" width="1200" height="675" />
+            </noscript>
+          </div>
         </div>
       </section>
       <section class="section" id="commands">
@@ -160,5 +174,6 @@
       <div class="foot-links"><a href="https://github.com/pc-style/supply-chain-guard" target="_blank" rel="noreferrer">github</a></div>
     </footer>
     <script src="./script.js"></script>
+    <script type="module" src="./demo-terminal.js"></script>
   </body>
 </html>

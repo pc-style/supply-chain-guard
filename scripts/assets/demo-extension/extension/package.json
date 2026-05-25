@@ -1,0 +1,9 @@
+{
+  "name": "demo-theme",
+  "displayName": "Demo Theme",
+  "description": "Minimal extension for Supply Chain Guard demo screenshots.",
+  "version": "0.0.1",
+  "publisher": "scguard-demo",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Themes"]
+}

@@ -1,0 +1,32 @@
+[
+  {
+    "slug": "scan-npm",
+    "title": "scanning an npm package",
+    "command": "scguard review chalk@5.4.1"
+  },
+  {
+    "slug": "add-withheld",
+    "title": "staged without installing",
+    "command": "scguard review chalk@5.4.1"
+  },
+  {
+    "slug": "add-approved",
+    "title": "install after approval",
+    "command": "scguard install is-number@7.0.0"
+  },
+  {
+    "slug": "block-broad-update",
+    "title": "blocking a broad update",
+    "command": "bun update"
+  },
+  {
+    "slug": "scan-vsix",
+    "title": "scanning a vsix extension",
+    "command": "scguard scan-vsix ./demo-theme.vsix"
+  },
+  {
+    "slug": "generated-reports",
+    "title": "generated reports",
+    "command": "ls -la .scguard/reports/"
+  }
+]

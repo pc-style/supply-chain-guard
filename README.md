@@ -71,7 +71,12 @@ Every run leaves JSON, Markdown, and agent-review prompts under `.scguard/report
 
 ![Supply Chain Guard generated reports](docs/screenshots/generated-reports.png)
 
-The demo script cleans up its temporary workspace when it finishes:
+Demo captures are generated from real CLI runs:
+
+```sh
+bun run demo-screenshots   # capture JSON + regenerate PNGs
+bun run capture-demos      # JSON only (site live terminal)
+```
 
 ![Supply Chain Guard demo completion](docs/screenshots/demo-complete.png)
 
