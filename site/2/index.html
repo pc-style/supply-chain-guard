@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Supply Chain Guard — Proposal 2 (Editorial)</title>
+    <meta name="robots" content="noindex" />
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+    <link rel="stylesheet" href="./theme.css" />
+  </head>
+  <body>
+    <div class="proposal-bar">
+      <span>Proposal 02 · Editorial magazine</span>
+      <nav aria-label="Design proposals">
+        <a href="/1/">1</a>
+        <a href="/2/" class="active">2</a>
+        <a href="/3/">3</a>
+        <a href="/4/">4</a>
+        <a href="/5/">5</a>
+        <a href="../">Main site</a>
+      </nav>
+    </div>
+    <header class="nav">
+      <div class="nav-inner">
+        <a class="brand" href="#top">Supply Chain Guard</a>
+        <nav class="nav-links"><a href="#checks">Checks</a><a href="#how">Process</a><a href="#commands">Commands</a></nav>
+        <a class="nav-cta" href="https://github.com/pc-style/supply-chain-guard" target="_blank" rel="noreferrer">Repository</a>
+      </div>
+    </header>
+    <main id="top">
+      <section class="hero">
+        <div>
+          <span class="pill">A local review before every install</span>
+          <h1 class="hero-title"><span class="drop">R</span>eview before you install.</h1>
+          <p class="hero-lead">Supply Chain Guard scans npm packages and VS Code extensions before they touch your machine — lifecycle scripts, credential reads, suspicious payloads, and Socket signals, all locally.</p>
+          <ul class="hero-list">
+            <li>Malicious scripts and hidden actions</li>
+            <li>bun, npm, yarn, pnpm, and VS Code</li>
+            <li>Fast, local, no telemetry</li>
+          </ul>
+          <div class="early-warning"><strong>Very early stage.</strong> May miss malware or flag safe packages. A warning layer, not proof of safety.</div>
+          <div class="hero-actions">
+            <button class="btn btn-dark" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/pc-style/supply-chain-guard/main/install.sh | bash">Install</button>
+            <a class="btn btn-ghost" href="https://github.com/pc-style/supply-chain-guard" target="_blank" rel="noreferrer">GitHub</a>
+          </div>
+        </div>
+        <div class="terminal" id="hero-term">
+          <div class="terminal-bar">supply-chain-guard · session</div>
+          <div class="terminal-body"><pre class="t-out"><code id="hero-term-out"></code><span class="caret" id="hero-term-caret">▌</span></pre></div>
+        </div>
+      </section>
+      <section class="section" id="checks">
+        <div class="panel-eyebrow">What it checks</div>
+        <h2 class="section-title">Six lenses on every package.</h2>
+        <div class="checks-grid">
+          <div class="check"><h3>Lifecycle scripts</h3><p>preinstall, install, postinstall, prepare</p></div>
+          <div class="check"><h3>Remote downloads</h3><p>curl, wget, fetch</p></div>
+          <div class="check"><h3>File system access</h3><p>reads, writes, sensitive paths</p></div>
+          <div class="check"><h3>Network activity</h3><p>connections to external hosts</p></div>
+          <div class="check"><h3>Policy &amp; licenses</h3><p>CVEs, allow / block rules</p></div>
+          <div class="check"><h3>Socket signal</h3><p>optional socket.dev score</p></div>
+        </div>
+        <p class="section-sub" style="margin-top:24px">Also VS Code extension internals and optional agent review with <code class="kbd">SCGUARD_DECISION: approve</code>.</p>
+      </section>
+      <section class="section" id="how">
+        <div class="how-grid">
+          <div>
+            <div class="panel-eyebrow">How it works</div>
+            <h2 class="section-title">A small loop, all on disk.</h2>
+            <p class="section-sub">Install waits for scan and explicit approval. Nothing leaves your machine unless you request Socket.</p>
+            <ol class="how-steps">
+              <li><div><h3>Stage</h3><p>Tarball or <code class="kbd">.vsix</code> to <code class="kbd">.scguard/cache</code>.</p></div></li>
+              <li><div><h3>Scan</h3><p>Heuristics, optional Socket, risk score.</p></div></li>
+              <li><div><h3>Decide</h3><p>Report or agent review — approve to continue.</p></div></li>
+            </ol>
+          </div>
+          <img class="stack-img" src="../stack.png" alt="Stack diagram" />
+        </div>
+      </section>
+      <section class="section" id="demo">
+        <div class="panel-eyebrow" style="text-align:center">In motion</div>
+        <h2 class="section-title" style="text-align:center">See it in action.</h2>
+        <div class="player">
+          <div class="player-tabs" role="tablist">
+            <button class="ptab active" data-shot="scan-npm" role="tab" aria-selected="true">scan npm</button>
+            <button class="ptab" data-shot="add-withheld" role="tab">stage only</button>
+            <button class="ptab" data-shot="add-approved" role="tab">approved install</button>
+            <button class="ptab" data-shot="block-broad-update" role="tab">block update</button>
+            <button class="ptab" data-shot="scan-vsix" role="tab">scan vsix</button>
+            <button class="ptab" data-shot="generated-reports" role="tab">reports</button>
+          </div>
+          <div class="player-frame">
+            <div class="player-bar"><span id="player-title">scguard, scan an npm package</span></div>
+            <img id="player-img" src="../screenshots/scan-npm.png" alt="Demo screenshot" />
+          </div>
+        </div>
+      </section>
+      <section class="section" id="commands">
+        <div class="panel-eyebrow">Commands</div>
+        <button class="cmd-primary" type="button" data-copy="scguard review chalk@5.4.1"><strong>scguard review</strong> — stage, scan, report. No install.</button>
+        <div class="cmd-pills">
+          <div class="cmd-pill"><code>scguard install &lt;pkg&gt; --agent codex</code><span>Gate then install.</span></div>
+          <div class="cmd-pill"><code>scguard scan-vsix &lt;path&gt;</code><span>VS Code extension scan.</span></div>
+          <div class="cmd-pill"><code>scguard doctor</code><span>Environment sanity check.</span></div>
+          <div class="cmd-pill"><code>scguard shell-hook</code><span>Route PMs through guard.</span></div>
+        </div>
+      </section>
+      <section class="cta">
+        <div><h2>Make installs boring again.</h2><p>Add the gate for your team.</p></div>
+        <button class="copy-card" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/pc-style/supply-chain-guard/main/install.sh | bash">curl install.sh | bash</button>
+      </section>
+    </main>
+    <footer class="foot">
+      <span>Supply Chain Guard · v0.1 · MIT</span>
+      <div class="foot-links"><a href="https://github.com/pc-style/supply-chain-guard" target="_blank" rel="noreferrer">GitHub</a><a href="../">Main site</a></div>
+    </footer>
+    <script src="../script.js"></script>
+  </body>
+</html>
