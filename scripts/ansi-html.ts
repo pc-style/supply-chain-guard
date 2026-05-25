@@ -105,6 +105,23 @@ export function applySgrSequence(codes: string[]): Style {
   return style;
 }
 
+/** True when the CSI sequence includes SGR reset (0), not a truecolor channel value. */
+function sgrSequenceHasReset(codes: string[]): boolean {
+  for (let i = 0; i < codes.length; ) {
+    if (codes[i] === "38" && codes[i + 1] === "2") {
+      i += 5;
+      continue;
+    }
+    if (codes[i] === "48" && codes[i + 1] === "2") {
+      i += 5;
+      continue;
+    }
+    if (codes[i] === "0") return true;
+    i += 1;
+  }
+  return false;
+}
+
 export function ansiToHtml(text: string): string {
   const parts: string[] = [];
   let style: Style = {};
@@ -135,7 +152,7 @@ export function ansiToHtml(text: string): string {
       const codes = body.split(";").filter((c) => c.length > 0);
       const delta = applySgrSequence(codes);
       // Reset (0) in a sequence clears prior styles before later codes in the same sequence.
-      if (codes.length === 0 || codes.includes("0")) {
+      if (codes.length === 0 || sgrSequenceHasReset(codes)) {
         style = delta;
       } else {
         style = { ...style, ...delta };

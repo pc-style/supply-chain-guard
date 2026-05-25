@@ -32,4 +32,16 @@ describe("ansiToHtml", () => {
     expect(html).toContain("rgb(248,113,113)");
     expect(html).not.toMatch(/font-weight:600[^<]*rgb\(248,113,113\)/);
   });
+
+  test("truecolor with zero channel does not reset prior styles", () => {
+    const html = ansiToHtml("\x1b[1m\x1b[38;2;0;255;0mgreen\x1b[0m");
+    expect(html).toContain("font-weight:600");
+    expect(html).toContain("rgb(0,255,0)");
+  });
+
+  test("bold + truecolor with zero channel in one sequence", () => {
+    const html = ansiToHtml("\x1b[1;38;2;0;255;0mgreen\x1b[0m");
+    expect(html).toContain("font-weight:600");
+    expect(html).toContain("rgb(0,255,0)");
+  });
 });
