@@ -40,7 +40,7 @@ Pick which approach you want on **scguard.pcstyle.dev**. Both use the **same cap
 
 **Preview:** See `site/screenshots/scan-npm.png` (and siblings) after `bun run demo-screenshots`.
 
-**Files:** `scripts/generate-demo-screenshots.mjs`, `site/screenshots/*.png`
+**Files:** `scripts/generate-demo-screenshots.mjs`, `site/screenshots/*.png` (six demo tabs only — no help, no demo-complete)
 
 ---
 

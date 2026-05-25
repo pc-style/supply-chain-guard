@@ -37,7 +37,12 @@ async function main() {
   await ensureDirs();
 
   const SILENT_CMDS = new Set(["shell-hook", "doctor", "--help", "-h", "--version", "-v", "version", "self-test"]);
-  if (!Bun.env.SCGUARD_SHELL_HOOK_ACTIVE && cmd && !SILENT_CMDS.has(cmd)) {
+  if (
+    !Bun.env.SCGUARD_SHELL_HOOK_ACTIVE &&
+    !Bun.env.SCGUARD_SUPPRESS_HOOK_WARN &&
+    cmd &&
+    !SILENT_CMDS.has(cmd)
+  ) {
     process.stderr.write(
       `${c.amber("scguard:", true)} ${c.dim("shell hook not active — package manager commands are unguarded.")}\n` +
       `         ${c.dim('Run: eval "$(scguard shell-hook)"   or add it to your shell profile.')}\n`,

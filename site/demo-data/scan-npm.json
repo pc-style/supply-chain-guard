@@ -3,7 +3,7 @@
   "title": "scanning an npm package",
   "command": "scguard review chalk@5.4.1",
   "cwd": "./demo",
-  "capturedAt": "2026-05-25T16:20:01.876Z",
+  "capturedAt": "2026-05-25T16:31:28.096Z",
   "lines": [
     "$ scguard review chalk@5.4.1",
     "<span style=\"color:rgb(161,161,170)\">Resolving graph and simulating install for chalk@5.4.1...</span>",

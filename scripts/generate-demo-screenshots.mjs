@@ -84,31 +84,13 @@ async function main() {
   const browser = await chromium.launch({ headless: true });
   try {
     for (const { slug } of manifest) await shot(browser, slug);
-    await shot(browser, "help");
   } finally {
     await browser.close();
   }
 
-  for (const file of ["help", ...manifest.map((m) => m.slug)]) {
-    await copyFile(join(SITE_SHOTS, `${file}.png`), join(DOCS_SHOTS, `${file}.png`));
+  for (const { slug } of manifest) {
+    await copyFile(join(SITE_SHOTS, `${slug}.png`), join(DOCS_SHOTS, `${slug}.png`));
   }
-
-  const complete = {
-    slug: "demo-complete",
-    title: "demo workspace cleaned up",
-    command: "scguard demo cleanup",
-    cwd: "./demo",
-    lines: [
-      '<span style="color:rgb(161,161,170)">Demo workspace removed. Re-run </span><span style="color:rgb(147,197,253)">bun run scripts/capture-demos.ts</span><span style="color:rgb(161,161,170)"> to refresh captures.</span>',
-    ],
-  };
-  const pageHtml = shellPage(complete);
-  const browser2 = await chromium.launch({ headless: true });
-  const page = await browser2.newPage({ viewport: { width: 1120, height: 200 } });
-  await page.setContent(pageHtml);
-  await page.locator(".terminal").screenshot({ path: join(SITE_SHOTS, "demo-complete.png") });
-  await browser2.close();
-  await copyFile(join(SITE_SHOTS, "demo-complete.png"), join(DOCS_SHOTS, "demo-complete.png"));
 
   console.log("\nSynced PNGs to site/screenshots and docs/screenshots");
 }

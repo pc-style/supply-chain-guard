@@ -27,6 +27,6 @@
   {
     "slug": "generated-reports",
     "title": "generated reports",
-    "command": "ls -la .scguard/reports/"
+    "command": "ls .scguard/reports/"
   }
 ]

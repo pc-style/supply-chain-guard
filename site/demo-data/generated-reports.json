@@ -1,14 +1,12 @@
 {
   "slug": "generated-reports",
   "title": "generated reports",
-  "command": "ls -la .scguard/reports/",
+  "command": "ls .scguard/reports/",
   "cwd": "./demo",
-  "capturedAt": "2026-05-25T16:20:03.226Z",
+  "capturedAt": "2026-05-25T16:31:29.312Z",
   "lines": [
-    "$ ls -la .scguard/reports/",
-    "Every run writes JSON, Markdown, and agent prompts under .scguard/reports:",
-    "",
-    "  chalk@5.4.1-report.json",
+    "$ ls .scguard/reports/",
+    "chalk@5.4.1-report.json",
     "  chalk@5.4.1-report.md",
     "  chalk@5.4.1-codex-prompt.md",
     "  chalk@5.4.1-pi-prompt.md",
@@ -26,5 +24,5 @@
     "",
     "## Summary"
   ],
-  "plain": "$ ls -la .scguard/reports/\nEvery run writes JSON, Markdown, and agent prompts under .scguard/reports:\n\n  chalk@5.4.1-report.json\n  chalk@5.4.1-report.md\n  chalk@5.4.1-codex-prompt.md\n  chalk@5.4.1-pi-prompt.md\n$ head -12 .scguard/reports/chalk@5.4.1-report.md\n# Supply Chain Report: chalk@5.4.1\n\n## Decision basis\n\n- Verdict: allow\n- Why install is allowed: no high-severity findings were produced (0 medium, 0 low)\n- Top risks: none\n- Reassuring signals: package name exact-match in popularity baseline\n- Skipped/incomplete checks: Socket intelligence was not checked (skipped).; OSV vulnerability lookup was not checked (skipped).\n- Next action: Proceed only if this risk profile is acceptable.\n\n## Summary"
+  "plain": "$ ls .scguard/reports/\nchalk@5.4.1-report.json\n  chalk@5.4.1-report.md\n  chalk@5.4.1-codex-prompt.md\n  chalk@5.4.1-pi-prompt.md\n$ head -12 .scguard/reports/chalk@5.4.1-report.md\n# Supply Chain Report: chalk@5.4.1\n\n## Decision basis\n\n- Verdict: allow\n- Why install is allowed: no high-severity findings were produced (0 medium, 0 low)\n- Top risks: none\n- Reassuring signals: package name exact-match in popularity baseline\n- Skipped/incomplete checks: Socket intelligence was not checked (skipped).; OSV vulnerability lookup was not checked (skipped).\n- Next action: Proceed only if this risk profile is acceptable.\n\n## Summary"
 }

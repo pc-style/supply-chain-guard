@@ -1,6 +1,6 @@
 {
   "name": "supply-chain-guard",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local supply-chain install gate for npm packages and VS Code extensions with Socket, Codex, and PI review support.",
   "license": "MIT",
   "devDependencies": {
