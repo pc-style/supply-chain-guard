@@ -3,12 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Supply Chain Guard, a local review step before npm and VS Code installs</title>
+    <title>Supply Chain Guard — review before you install</title>
     <meta
       name="description"
       content="Supply Chain Guard scans npm packages and VS Code extensions before they touch your machine. Catches lifecycle scripts, credential reads, suspicious payloads, and Socket signals, all locally."
     />
-    <meta name="theme-color" content="#0d0d0d" />
+    <meta name="theme-color" content="#0f0d0d" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <link rel="icon" type="image/x-icon" href="./favicon.ico" sizes="any" />
     <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
@@ -28,372 +28,135 @@
     <meta name="twitter:description" content="Very early-stage local review step before npm and VS Code installs." />
     <meta name="twitter:image" content="https://scguard.pcstyle.dev/og-image.png" />
 
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
-    />
     <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./stack-diagram.css" />
   </head>
   <body>
-    <div class="bg" aria-hidden="true">
-      <div class="bg-mesh"></div>
-      <div class="bg-glow bg-glow-1"></div>
-      <div class="bg-glow bg-glow-2"></div>
-      <div class="bg-dots"></div>
-      <div class="bg-grain"></div>
-    </div>
-
     <header class="nav">
       <div class="nav-inner">
-        <a class="brand" href="#top" aria-label="Supply Chain Guard">
-          <span class="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round">
-              <path d="M12 3l8 3v6c0 5.5-3.5 9-8 11-4.5-2-8-5.5-8-11V6l8-3z" />
-              <path d="M9 12l2.2 2.2L15.5 10" />
-            </svg>
-          </span>
-          <span class="brand-name">Supply Chain Guard</span>
-        </a>
+        <a class="brand" href="#top">supply chain guard</a>
         <nav class="nav-links" aria-label="Primary">
-          <a href="#checks">What it checks</a>
-          <a href="#how">How it works</a>
-          <a href="#commands">Commands</a>
+          <a href="#checks">checks</a>
+          <a href="#how">flow</a>
+          <a href="#commands">cli</a>
         </nav>
-        <a class="nav-cta" href="https://github.com/pc-style/supply-chain-guard" target="_blank" rel="noreferrer">
-          <span class="nav-cta-prompt">&gt;_</span>
-          Get started
-        </a>
+        <a class="nav-cta" href="https://github.com/pc-style/supply-chain-guard" target="_blank" rel="noreferrer">github</a>
       </div>
     </header>
-
     <main id="top">
-      <!-- HERO -->
       <section class="hero">
-        <div class="hero-grid">
-          <div class="hero-left">
-            <span class="pill">
-              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 9l4 4 10-10"/><path d="M19 11v8a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h7"/></svg>
-              Local review before install
-            </span>
-
-            <h1 class="hero-title">
-              Review before<br />
-              you install<span class="amber">.</span>
-            </h1>
-
-            <p class="hero-lead">
-              Supply Chain Guard scans npm packages and VS Code extensions before they touch your machine.
-              It catches lifecycle scripts, credential reads, suspicious payloads, and Socket signals, all locally.
-            </p>
-
-            <ul class="hero-list">
-              <li>
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
-                Catches malicious scripts and hidden actions
-              </li>
-              <li>
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
-                Works with bun, npm, yarn, pnpm, and VS Code
-              </li>
-              <li>
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
-                Fast, local, no telemetry
-              </li>
-            </ul>
-
-            <div class="early-warning" role="note" aria-label="Early stage warning">
-              <strong>VERY VERY EARLY STAGE.</strong>
-              This tool can miss malicious packages, flag safe packages, and break package-manager flows. Use it as a local warning layer, not proof that dependencies are safe.
-            </div>
-
-            <div class="hero-actions">
-              <button class="btn btn-dark" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/pc-style/supply-chain-guard/main/install.sh | bash" aria-label="Copy install command">
-                <span class="btn-prompt">&gt;_</span>
-                <span class="btn-label">Get started</span>
-              </button>
-              <a class="btn btn-ghost" href="https://github.com/pc-style/supply-chain-guard" target="_blank" rel="noreferrer">
-                View on GitHub
-              </a>
-            </div>
-          </div>
-
-          <div class="hero-right">
-            <div class="terminal" id="hero-term">
-              <div class="terminal-bar">
-                <span class="tl tl-r"></span>
-                <span class="tl tl-y"></span>
-                <span class="tl tl-g"></span>
-                <span class="terminal-title">supply-chain-guard</span>
-              </div>
-              <div class="terminal-body">
-                <pre class="t-out"><code id="hero-term-out"></code><span class="caret" id="hero-term-caret">▌</span></pre>
-              </div>
-            </div>
-            <div class="terminal-glow" aria-hidden="true"></div>
+        <div>
+          <span class="pill">peel back the package first</span>
+          <h1 class="hero-title">review before you install.</h1>
+          <p class="hero-lead">scans npm packages and vs code extensions on your machine — lifecycle scripts, credential reads, suspicious payloads, optional socket lookup.</p>
+          <ul class="hero-list">
+            <li>spots risky scripts before they run</li>
+            <li>bun, npm, yarn, pnpm, vs code</li>
+            <li>no telemetry</li>
+          </ul>
+          <div class="early-warning"><strong>very early stage.</strong> a warning layer, not proof packages are safe.</div>
+          <div class="hero-actions">
+            <button class="btn btn-dark" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/pc-style/supply-chain-guard/main/install.sh | bash">install</button>
+            <a class="btn" href="https://github.com/pc-style/supply-chain-guard" target="_blank" rel="noreferrer">github</a>
           </div>
         </div>
+        <div class="hero-viz" aria-label="Example findings report">
+          <div class="viz-title">left-pad · review</div>
+          <div class="viz-findings">
+            <div class="finding high"><strong>HIGH</strong> postinstall — network exfiltration to api.evil.dev</div>
+            <div class="finding med"><strong>MED</strong> preinstall — remote script via curl</div>
+            <div class="finding low"><strong>LOW</strong> prepare — build script with fs access</div>
+          </div>
+          <div class="viz-footer">install blocked · 2 high-risk issues</div>
+        </div>
       </section>
-
-      <!-- CHECKS -->
       <section class="section" id="checks">
-        <div class="checks-panel">
-          <div class="panel-eyebrow">
-            <span class="dot"></span>
-            <span>What it checks</span>
-          </div>
-
-          <div class="checks-grid">
-            <div class="check">
-              <div class="check-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 9l-4 3 4 3"/><path d="M16 9l4 3-4 3"/><path d="M14 6l-4 12"/></svg>
-              </div>
-              <div class="check-text">
-                <h3>Lifecycle scripts</h3>
-                <p>preinstall, install, postinstall, prepare</p>
-              </div>
-            </div>
-
-            <div class="check">
-              <div class="check-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
-              </div>
-              <div class="check-text">
-                <h3>Remote downloads</h3>
-                <p>curl, wget, fetch, and friends</p>
-              </div>
-            </div>
-
-            <div class="check">
-              <div class="check-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M7 9l2 2-2 2"/><path d="M12 13h5"/></svg>
-              </div>
-              <div class="check-text">
-                <h3>File system access</h3>
-                <p>reads, writes, deletes, sensitive paths</p>
-              </div>
-            </div>
-
-            <div class="check">
-              <div class="check-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18"/><path d="M12 3a14 14 0 0 0 0 18"/></svg>
-              </div>
-              <div class="check-text">
-                <h3>Network activity</h3>
-                <p>connections to external hosts</p>
-              </div>
-            </div>
-
-            <div class="check">
-              <div class="check-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5.5-3.5 9-8 11-4.5-2-8-5.5-8-11V6l8-3z"/><path d="M9 12l2.2 2.2L15.5 10"/></svg>
-              </div>
-              <div class="check-text">
-                <h3>Policy &amp; licenses</h3>
-                <p>licenses, CVEs, allow / block rules</p>
-              </div>
-            </div>
-
-            <div class="check">
-              <div class="check-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg>
-              </div>
-              <div class="check-text">
-                <h3>Socket signal</h3>
-                <p>optional socket.dev package score</p>
-              </div>
-            </div>
-          </div>
-
-          <p class="checks-note">
-            Also: <strong>VS Code extension internals</strong> (activation events, entry points, scripts, dependencies) and
-            <strong>optional Codex or PI review</strong> that has to end with <code class="kbd">SCGUARD_DECISION: approve</code>.
-          </p>
+        <div class="panel-eyebrow">what it checks</div>
+        <h2 class="section-title">six things on every package</h2>
+        <div class="checks-grid">
+          <div class="check"><h3>lifecycle scripts</h3><p>preinstall, install, postinstall, prepare</p></div>
+          <div class="check"><h3>remote downloads</h3><p>curl, wget, fetch</p></div>
+          <div class="check"><h3>file system access</h3><p>reads, writes, sensitive paths</p></div>
+          <div class="check"><h3>network activity</h3><p>external host connections</p></div>
+          <div class="check"><h3>policy &amp; licenses</h3><p>cves, allow / block rules</p></div>
+          <div class="check"><h3>socket signal</h3><p>optional socket.dev score</p></div>
         </div>
       </section>
-
-      <!-- HOW IT WORKS -->
       <section class="section" id="how">
         <div class="how-grid">
-          <div class="how-left">
-            <div class="panel-eyebrow"><span class="dot"></span><span>How it works</span></div>
-
-            <h2 class="section-title">A small loop, all on disk.</h2>
-            <p class="section-sub">
-              The install does not start until the scan finishes and approval is explicit.
-              Nothing leaves your machine unless you ask for the Socket lookup.
-            </p>
-
+          <div>
+            <div class="panel-eyebrow">how it works</div>
+            <h2 class="section-title">stage → scan → decide</h2>
+            <p class="section-sub">nothing installs until you approve. data stays on disk unless you opt into socket.</p>
             <ol class="how-steps">
-              <li>
-                <span class="hs-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
-                </span>
-                <div>
-                  <h3>Stage</h3>
-                  <p>Resolve the tarball or <code class="kbd">.vsix</code>, download to <code class="kbd">.scguard/cache</code>, extract to <code class="kbd">.scguard/work</code>.</p>
+              <li><span class="step-badge">1</span><div><h3>stage</h3><p>package to <code class="kbd">.scguard/cache</code>.</p></div></li>
+              <li><span class="step-badge">2</span><div><h3>scan</h3><p>heuristics + optional socket score.</p></div></li>
+              <li><span class="step-badge">3</span><div><h3>decide</h3><p>approve or stop the install.</p></div></li>
+            </ol>
+          </div>
+          <figure class="stack-diagram" aria-label="Architecture: your project, SCG sandbox, report">
+            <div class="stack-spine" aria-hidden="true"></div>
+            <ol class="stack-layers">
+              <li class="stack-layer">
+                <div class="stack-plate">
+                  <span class="stack-glyph" aria-hidden="true">&lt;/&gt;</span>
+                  <span class="stack-name">your project</span>
                 </div>
               </li>
-              <li>
-                <span class="hs-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg>
-                </span>
-                <div>
-                  <h3>Scan</h3>
-                  <p>Run the heuristics over the staged files, optionally query Socket, score the risk.</p>
+              <li class="stack-layer stack-layer-sandbox">
+                <div class="stack-plate stack-plate-sandbox">
+                  <span class="stack-glyph" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path d="M12 3 4 7v6c0 4.5 3.4 8.7 8 10 4.6-1.3 8-5.5 8-10V7l-8-4z"/></svg>
+                  </span>
+                  <span class="stack-name">scg sandbox</span>
                 </div>
               </li>
-              <li>
-                <span class="hs-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>
-                </span>
-                <div>
-                  <h3>Decide</h3>
-                  <p>Read the JSON / Markdown report or hand it to Codex or PI. Approve to continue, anything else stops.</p>
+              <li class="stack-layer">
+                <div class="stack-plate">
+                  <span class="stack-glyph" aria-hidden="true">&gt;_</span>
+                  <span class="stack-name">report</span>
                 </div>
               </li>
             </ol>
-          </div>
-
-          <div class="how-right">
-            <img class="stack-img" src="./stack.png" alt="Three floating plates: your project, scguard sandbox in the middle with a golden glow, and the report plate at the bottom, connected by dotted golden lines." />
-          </div>
+          </figure>
         </div>
       </section>
-
-      <!-- DEMO -->
       <section class="section" id="demo">
-        <div class="section-head section-head-center">
-          <div class="panel-eyebrow"><span class="dot"></span><span>In motion</span></div>
-          <h2 class="section-title">See it in action.</h2>
-          <p class="section-sub">A few sub-second commands you run from where you already are.</p>
-        </div>
-
+        <div class="panel-eyebrow">in motion</div>
+        <h2 class="section-title">see it work</h2>
         <div class="player">
           <div class="player-tabs" role="tablist">
-            <button class="ptab active" data-shot="scan-npm" role="tab" aria-selected="true">scan an npm package</button>
-            <button class="ptab" data-shot="add-withheld" role="tab">stage without installing</button>
-            <button class="ptab" data-shot="add-approved" role="tab">install after approval</button>
-            <button class="ptab" data-shot="block-broad-update" role="tab">block a broad update</button>
-            <button class="ptab" data-shot="scan-vsix" role="tab">scan a .vsix</button>
-            <button class="ptab" data-shot="generated-reports" role="tab">read the reports</button>
+            <button class="ptab active" data-shot="scan-npm" role="tab" aria-selected="true">scan npm</button>
+            <button class="ptab" data-shot="add-withheld" role="tab">stage only</button>
+            <button class="ptab" data-shot="add-approved" role="tab">approved</button>
+            <button class="ptab" data-shot="block-broad-update" role="tab">block update</button>
+            <button class="ptab" data-shot="scan-vsix" role="tab">vsix</button>
+            <button class="ptab" data-shot="generated-reports" role="tab">reports</button>
           </div>
-
-          <div class="player-frame">
-            <div class="player-bar">
-              <span class="tl tl-r"></span>
-              <span class="tl tl-y"></span>
-              <span class="tl tl-g"></span>
-              <span class="player-title" id="player-title">scguard, scan an npm package</span>
-            </div>
-            <div class="player-body">
-              <img id="player-img" src="./screenshots/scan-npm.png" alt="scguard scanning an npm package" />
-            </div>
-          </div>
+          <div class="player-bar" id="player-title">scanning an npm package</div>
+          <div class="player-frame"><img id="player-img" src="./screenshots/scan-npm.png" alt="Demo screenshot" width="1200" height="675" /></div>
         </div>
       </section>
-
-      <!-- COMMANDS -->
       <section class="section" id="commands">
-        <div class="commands-panel">
-          <div class="panel-eyebrow">
-            <span class="dot"></span>
-            <span>Commands</span>
-            <span class="eyebrow-sep">·</span>
-            <span class="eyebrow-aux">everything you need to review with confidence.</span>
-          </div>
-
-          <button class="cmd-primary" type="button" data-copy="scguard review chalk@5.4.1" aria-label="Copy scguard review">
-            <span class="cmd-prompt">$</span>
-            <code><span class="t-cmd">scguard</span> <span class="t-sub">review</span>      Stage, scan, and write a report. No install.</code>
-            <span class="copy-i-wrap">
-              <svg class="copy-i copy-i-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
-              <svg class="copy-i copy-i-ok" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
-            </span>
-          </button>
-
-          <div class="cmd-pills">
-            <div class="cmd-pill">
-              <code><span class="t-prompt">$</span> scguard <span class="t-sub">install</span> &lt;pkg&gt; --agent codex</code>
-              <span>Gate, then install with optional agent review.</span>
-            </div>
-            <div class="cmd-pill">
-              <code><span class="t-prompt">$</span> scguard <span class="t-sub">scan-vsix</span> &lt;path.vsix&gt;</code>
-              <span>Scan a VS Code extension from a local file.</span>
-            </div>
-            <div class="cmd-pill">
-              <code><span class="t-prompt">$</span> scguard <span class="t-sub">doctor</span></code>
-              <span>Sanity-check Bun, Git, PATH, hook, Socket, agents.</span>
-            </div>
-            <div class="cmd-pill">
-              <code><span class="t-prompt">$</span> scguard <span class="t-sub">shell-hook</span></code>
-              <span>Route bun, npm, pnpm, yarn through the guard.</span>
-            </div>
-          </div>
-
-          <details class="more">
-            <summary>Advanced commands</summary>
-            <p>
-              <code>scan-npm</code>, <code>scan-stage</code>, <code>guard</code>, <code>agent-prompt</code>,
-              <code>agent-review</code>, <code>self-test</code>, <code>config</code>,
-              <code>clean&nbsp;[--reports&nbsp;|&nbsp;--cache&nbsp;|&nbsp;--work&nbsp;|&nbsp;--all]</code>.
-            </p>
-          </details>
+        <div class="panel-eyebrow">commands</div>
+        <button class="cmd-primary" type="button" data-copy="scguard review chalk@5.4.1">scguard review — stage, scan, report (no install)</button>
+        <div class="cmd-pills">
+          <div class="cmd-pill"><code>scguard install &lt;pkg&gt; --agent codex</code><span>gate + optional agent.</span></div>
+          <div class="cmd-pill"><code>scguard scan-vsix &lt;path&gt;</code><span>extension scan.</span></div>
+          <div class="cmd-pill"><code>scguard doctor</code><span>environment check.</span></div>
+          <div class="cmd-pill"><code>scguard shell-hook</code><span>hook package managers.</span></div>
         </div>
       </section>
-
-      <!-- CTA -->
-      <section class="section cta-section">
-        <div class="cta">
-          <div class="cta-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round">
-              <path d="M12 3l8 3v6c0 5.5-3.5 9-8 11-4.5-2-8-5.5-8-11V6l8-3z" />
-              <path d="M9 12l2.2 2.2L15.5 10" />
-            </svg>
-          </div>
-
-          <div class="cta-text">
-            <h2>Make installs boring again.</h2>
-            <p>Add the gate and protect your team.</p>
-          </div>
-
-          <div class="cta-right">
-            <button class="copy-card copy-card-dark" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/pc-style/supply-chain-guard/main/install.sh | bash" aria-label="Copy install command">
-              <span class="copy-prompt">$</span>
-              <code class="copy-text">curl <span class="dim">.../install.sh</span> | bash</code>
-              <span class="copy-hint">
-                <svg class="copy-i copy-i-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
-                <svg class="copy-i copy-i-ok" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
-                <span class="copy-label">Copy</span>
-              </span>
-            </button>
-            <span class="cta-note">Takes under 30 seconds.</span>
-          </div>
-        </div>
+      <section class="cta">
+        <h2>make installs boring again.</h2>
+        <code class="cta-cmd">curl -fsSL https://raw.githubusercontent.com/pc-style/supply-chain-guard/main/install.sh | bash</code>
+        <button class="copy-card" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/pc-style/supply-chain-guard/main/install.sh | bash"><span class="copy-label">copy install</span></button>
       </section>
     </main>
-
     <footer class="foot">
-      <div class="foot-inner">
-        <div class="foot-brand">
-          <span class="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round">
-              <path d="M12 3l8 3v6c0 5.5-3.5 9-8 11-4.5-2-8-5.5-8-11V6l8-3z" />
-              <path d="M9 12l2.2 2.2L15.5 10" />
-            </svg>
-          </span>
-          <span>Supply Chain Guard</span>
-          <span class="foot-meta">v0.1 · MIT</span>
-        </div>
-        <div class="foot-links">
-          <a href="https://github.com/pc-style/supply-chain-guard" target="_blank" rel="noreferrer">GitHub</a>
-          <a href="https://github.com/pc-style/supply-chain-guard/blob/main/SECURITY.md" target="_blank" rel="noreferrer">Security</a>
-          <a href="https://github.com/pc-style/supply-chain-guard#commands" target="_blank" rel="noreferrer">Docs</a>
-        </div>
-      </div>
+      <span>supply chain guard · v0.1 · mit</span>
+      <div class="foot-links"><a href="https://github.com/pc-style/supply-chain-guard" target="_blank" rel="noreferrer">github</a></div>
     </footer>
-
     <script src="./script.js"></script>
   </body>
 </html>

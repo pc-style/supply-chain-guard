@@ -1,0 +1,148 @@
+/* Coded stack diagram — uses each proposal's --accent, --surface, --mono, etc. */
+
+.stack-diagram {
+  position: relative;
+  margin-top: 24px;
+  padding: 36px 20px 44px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.stack-diagram::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 55% 45% at 50% 52%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 70%);
+  pointer-events: none;
+}
+
+.stack-layers {
+  list-style: none;
+  margin: 0 auto;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  max-width: 280px;
+  position: relative;
+  z-index: 1;
+}
+
+.stack-layer {
+  width: 100%;
+  position: relative;
+}
+
+/* corner anchors + spine */
+.stack-layer::before,
+.stack-layer::after {
+  content: "";
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 70%, var(--muted));
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  opacity: 0.85;
+}
+.stack-layer::before { left: -14px; }
+.stack-layer::after { right: -14px; }
+
+.stack-spine {
+  position: absolute;
+  left: 50%;
+  top: 18%;
+  bottom: 18%;
+  width: 0;
+  border-left: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--border-strong));
+  transform: translateX(-50%);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.stack-plate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 12px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+  box-shadow: 0 3px 0 var(--border);
+}
+
+.stack-glyph {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.stack-glyph svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.stack-name {
+  white-space: nowrap;
+}
+
+/* middle sandbox layer */
+.stack-layer-sandbox {
+  z-index: 2;
+}
+
+.stack-plate-sandbox {
+  background: var(--bg);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border-strong));
+  color: var(--accent);
+  box-shadow:
+    0 0 28px color-mix(in srgb, var(--accent) 28%, transparent),
+    0 4px 0 color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+.stack-plate-sandbox .stack-glyph {
+  color: var(--accent);
+}
+
+.stack-plate-sandbox .stack-glyph svg {
+  stroke: currentColor;
+  fill: none;
+}
+
+/* connectors between layers */
+.stack-connector {
+  width: 0;
+  height: 18px;
+  margin: -4px auto;
+  border-left: 1px dashed color-mix(in srgb, var(--accent) 40%, var(--muted-2, var(--muted)));
+  opacity: 0.7;
+  list-style: none;
+}
+
+@media (min-width: 720px) {
+  .how-grid:has(.stack-diagram) {
+    display: grid;
+    grid-template-columns: 1fr min(300px, 42%);
+    gap: 32px;
+    align-items: start;
+  }
+
+  .how-grid:has(.stack-diagram) .stack-diagram {
+    margin-top: 0;
+  }
+}
