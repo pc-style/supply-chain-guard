@@ -3,77 +3,82 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Supply Chain Guard — Proposal 3 (Cyber)</title>
+    <title>Supply Chain Guard — Proposal 3 (Blueprint)</title>
     <meta name="robots" content="noindex" />
-    <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
-    <link rel="stylesheet" href="./theme.css" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/3/theme.css" />
   </head>
   <body>
     <div class="proposal-bar">
-      <span>Proposal 03 · Retro-futuristic</span>
+      <span>Proposal 03 · Technical blueprint</span>
       <nav aria-label="Design proposals">
-        <a href="/1/">1</a><a href="/2/">2</a><a href="/3/" class="active">3</a><a href="/4/">4</a><a href="/5/">5</a><a href="../">Main</a>
+        <a href="/1/">1</a><a href="/2/">2</a><a href="/3/" class="active">3</a><a href="/4/">4</a><a href="/5/">5</a><a href="/">Main</a>
       </nav>
     </div>
     <header class="nav">
       <div class="nav-inner">
-        <a class="brand" href="#top">SCG<span>_GUARD</span></a>
-        <nav class="nav-links"><a href="#checks">Scan</a><a href="#how">Pipeline</a><a href="#commands">CLI</a></nav>
-        <a class="nav-cta" href="https://github.com/pc-style/supply-chain-guard" target="_blank" rel="noreferrer">Deploy</a>
+        <a class="brand" href="#top">Supply Chain Guard<small>Dependency review system</small></a>
+        <nav class="nav-links"><a href="#checks">Spec</a><a href="#how">Sequence</a><a href="#commands">CLI</a></nav>
+        <a class="nav-cta" href="https://github.com/pc-style/supply-chain-guard" target="_blank" rel="noreferrer">Source</a>
       </div>
     </header>
     <main id="top">
       <section class="hero">
         <div>
-          <span class="pill">Local review · pre-install</span>
-          <h1 class="hero-title">Review before you install</h1>
-          <p class="hero-lead">Scan npm packages and VS Code extensions before they touch your machine. Lifecycle scripts, credential reads, payloads, Socket — all local.</p>
+          <div class="dim-label">Sheet 01 · Overview</div>
+          <h1 class="hero-title">Review before you install.</h1>
+          <p class="hero-lead">Local inspection of npm packages and VS Code extensions — lifecycle behavior, credential access, network patterns, optional Socket enrichment.</p>
           <ul class="hero-list">
-            <li>Blocks malicious scripts &amp; hidden actions</li>
-            <li>bun · npm · yarn · pnpm · VS Code</li>
-            <li>Zero telemetry · sub-second scans</li>
+            <li>Pre-install gate for package managers</li>
+            <li>Structured JSON / Markdown reports</li>
+            <li>No outbound telemetry by default</li>
           </ul>
-          <div class="early-warning"><strong>EARLY STAGE.</strong> Not a guarantee of safety — use as a local warning layer.</div>
+          <div class="early-warning"><strong>Note:</strong> Early-stage tooling — treat output as advisory, not certification.</div>
           <div class="hero-actions">
-            <button class="btn btn-dark" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/pc-style/supply-chain-guard/main/install.sh | bash">Initialize</button>
-            <a class="btn" href="https://github.com/pc-style/supply-chain-guard" target="_blank" rel="noreferrer">Source</a>
+            <button class="btn btn-dark" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/pc-style/supply-chain-guard/main/install.sh | bash">Install</button>
+            <a class="btn" href="https://github.com/pc-style/supply-chain-guard" target="_blank" rel="noreferrer">Documentation</a>
           </div>
         </div>
-        <div class="terminal" id="hero-term">
-          <div class="terminal-bar">// supply-chain-guard</div>
-          <div class="terminal-body"><pre class="t-out"><code id="hero-term-out"></code><span class="caret" id="hero-term-caret">▌</span></pre></div>
+        <div class="drawing" aria-label="Annotated findings sheet">
+          <div class="draw-title">Fig. 2 — Review output (left-pad)</div>
+          <div class="draw-row"><span class="code">HIGH</span><span>postinstall → network exfiltration (api.evil.dev)</span></div>
+          <div class="draw-row"><span class="code med">MED</span><span>preinstall → remote script fetch</span></div>
+          <div class="draw-row"><span class="code low">LOW</span><span>prepare → fs access in build.js</span></div>
+          <div class="draw-row"><span class="code low">OK</span><span>license &amp; CVE checks passed</span></div>
+          <div class="draw-note">Install withheld — 2 high-severity items</div>
         </div>
       </section>
       <section class="section" id="checks">
-        <div class="panel-eyebrow">Threat surface</div>
-        <h2 class="section-title">What it checks</h2>
-        <div class="checks-grid">
-          <div class="check"><h3>Lifecycle</h3><p>pre/post install hooks</p></div>
-          <div class="check"><h3>Downloads</h3><p>curl, wget, fetch</p></div>
-          <div class="check"><h3>Filesystem</h3><p>sensitive path access</p></div>
-          <div class="check"><h3>Network</h3><p>external hosts</p></div>
-          <div class="check"><h3>Policy</h3><p>licenses, CVEs, rules</p></div>
-          <div class="check"><h3>Socket</h3><p>optional score API</p></div>
+        <div class="section-head">
+          <div class="panel-eyebrow">Inspection matrix</div>
+          <h2 class="section-title">What it checks</h2>
         </div>
+        <table class="spec-table">
+          <thead><tr><th>Module</th><th>Scope</th></tr></thead>
+          <tbody>
+            <tr><td>Lifecycle</td><td>preinstall, install, postinstall, prepare</td></tr>
+            <tr><td>Fetch</td><td>curl, wget, remote scripts</td></tr>
+            <tr><td>Filesystem</td><td>reads, writes, sensitive paths</td></tr>
+            <tr><td>Network</td><td>outbound connections</td></tr>
+            <tr><td>Policy</td><td>licenses, CVEs, allow/block</td></tr>
+            <tr><td>Socket</td><td>optional package reputation</td></tr>
+          </tbody>
+        </table>
       </section>
       <section class="section" id="how">
-        <div class="how-grid">
-          <div>
-            <div class="panel-eyebrow">Pipeline</div>
-            <h2 class="section-title">On-disk loop</h2>
-            <p class="section-sub">No install until explicit approval.</p>
-            <ol class="how-steps">
-              <li><span class="step-num">01</span><div><h3>Stage</h3><p>Cache to <code class="kbd">.scguard/</code></p></div></li>
-              <li><span class="step-num">02</span><div><h3>Scan</h3><p>Heuristics + optional Socket</p></div></li>
-              <li><span class="step-num">03</span><div><h3>Decide</h3><p>Approve or halt</p></div></li>
-            </ol>
-          </div>
-          <img class="stack-img" src="../stack.png" alt="Stack" />
+        <div class="section-head">
+          <div class="panel-eyebrow">Sequence</div>
+          <h2 class="section-title">How it works</h2>
         </div>
+        <div class="how-spec">
+          <div><h3>Stage</h3><p>Resolve artifact → <code class="kbd">.scguard/cache</code></p></div>
+          <div><h3>Scan</h3><p>Apply heuristics, emit report</p></div>
+          <div><h3>Decide</h3><p>Human or agent approval required</p></div>
+        </div>
+        <div class="stack-frame"><img src="/stack.png" alt="System stack" width="600" height="400" /></div>
       </section>
       <section class="section" id="demo">
-        <div class="panel-eyebrow">Live feed</div>
-        <h2 class="section-title">In motion</h2>
+        <div class="section-head"><div class="panel-eyebrow">Reference</div><h2 class="section-title">Demonstrations</h2></div>
         <div class="player">
           <div class="player-tabs" role="tablist">
             <button class="ptab active" data-shot="scan-npm" role="tab" aria-selected="true">npm</button>
@@ -83,31 +88,31 @@
             <button class="ptab" data-shot="scan-vsix" role="tab">vsix</button>
             <button class="ptab" data-shot="generated-reports" role="tab">reports</button>
           </div>
-          <div class="player-frame">
-            <div class="player-bar" id="player-title">scguard, scan an npm package</div>
-            <img id="player-img" src="../screenshots/scan-npm.png" alt="Demo" />
-          </div>
+          <div class="player-bar" id="player-title">Scanning an npm package</div>
+          <div class="player-frame"><img id="player-img" src="/screenshots/scan-npm.png" alt="Demo" width="1200" height="675" /></div>
         </div>
       </section>
       <section class="section" id="commands">
-        <div class="panel-eyebrow">Interface</div>
-        <button class="cmd-primary" type="button" data-copy="scguard review chalk@5.4.1"><span class="t-cmd">scguard review</span> &lt;pkg&gt;</button>
-        <div class="cmd-pills">
-          <div class="cmd-pill"><code class="t-cmd">scguard install</code><span>Agent-gated install</span></div>
-          <div class="cmd-pill"><code class="t-cmd">scguard scan-vsix</code><span>Extension scan</span></div>
-          <div class="cmd-pill"><code class="t-cmd">scguard doctor</code><span>Diagnostics</span></div>
-          <div class="cmd-pill"><code class="t-cmd">scguard shell-hook</code><span>PM interception</span></div>
+        <div class="section-head"><div class="panel-eyebrow">Interface</div><h2 class="section-title">Commands</h2></div>
+        <div class="cmd-sheet">
+          <button class="cmd-primary" type="button" data-copy="scguard review chalk@5.4.1">scguard review &lt;package&gt;</button>
+          <div class="cmd-list">
+            <div><code>scguard install</code> — gated install</div>
+            <div><code>scguard scan-vsix</code> — extension audit</div>
+            <div><code>scguard doctor</code> — environment</div>
+            <div><code>scguard shell-hook</code> — PM interception</div>
+          </div>
         </div>
       </section>
       <section class="cta">
-        <div><h2>Make installs boring again.</h2></div>
-        <button class="copy-card" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/pc-style/supply-chain-guard/main/install.sh | bash">$ curl install.sh | bash</button>
+        <h2>Make installs boring again.</h2>
+        <button class="copy-card" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/pc-style/supply-chain-guard/main/install.sh | bash"><span class="copy-label">Copy install</span></button>
       </section>
     </main>
     <footer class="foot">
       <span>SCG v0.1 · MIT</span>
-      <div class="foot-links"><a href="https://github.com/pc-style/supply-chain-guard" target="_blank" rel="noreferrer">GitHub</a><a href="../">Main</a></div>
+      <div class="foot-links"><a href="https://github.com/pc-style/supply-chain-guard" target="_blank" rel="noreferrer">GitHub</a><a href="/">Main</a></div>
     </footer>
-    <script src="../script.js"></script>
+    <script src="/proposals.js"></script>
   </body>
 </html>

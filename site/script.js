@@ -54,7 +54,7 @@ tabs.forEach((tab) => {
     img.style.animation = "none";
     void img.offsetWidth;
     img.style.animation = "";
-    img.src = `./screenshots/${shot}.png`;
+    img.src = `/screenshots/${shot}.png`;
     img.alt = titles[shot] || shot;
     if (playerTitle) playerTitle.textContent = titles[shot] || `scguard, ${shot}`;
   });
