@@ -3,7 +3,7 @@
   "title": "blocking a broad update",
   "command": "bun update",
   "cwd": "./demo",
-  "capturedAt": "2026-05-25T16:31:28.988Z",
+  "capturedAt": "2026-05-25T17:38:04.503Z",
   "lines": [
     "$ bun update",
     "<span style=\"font-weight:600;color:rgb(248,113,113)\">error:</span> <span style=\"color:rgb(228,228,231)\">Broad package updates are blocked. Run the command with explicit package specs so each update can be staged and analyzed first.</span>"

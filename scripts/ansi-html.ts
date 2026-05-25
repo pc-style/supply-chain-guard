@@ -1,7 +1,5 @@
 /** Convert ANSI SGR sequences to HTML spans for terminal demo rendering. */
 
-const ESC = "\x1b[";
-
 const RGB: Record<string, [number, number, number]> = {
   amber: [251, 191, 36],
   green: [74, 222, 128],
@@ -31,6 +29,17 @@ function rgbFromCode(code: number): [number, number, number] | null {
 
 type Style = { fg?: string; bg?: string; bold?: boolean };
 
+function parseRgbChannel(value: string | undefined): number | null {
+  if (value === undefined || !/^\d+$/.test(value)) return null;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0 || n > 255) return null;
+  return n;
+}
+
+function rgbCss(r: number, g: number, b: number): string {
+  return `rgb(${r},${g},${b})`;
+}
+
 function styleToCss(s: Style): string {
   const parts: string[] = [];
   if (s.bold) parts.push("font-weight:600");
@@ -39,41 +48,61 @@ function styleToCss(s: Style): string {
   return parts.join(";");
 }
 
-function parseTrueColor(params: string[]): { fg?: string; bg?: string } | null {
-  if (params[0] === "38" && params[1] === "2" && params.length >= 5) {
-    const [, , r, g, b] = params;
-    return { fg: `rgb(${r},${g},${b})` };
-  }
-  if (params[0] === "48" && params[1] === "2" && params.length >= 5) {
-    const [, , r, g, b] = params;
-    return { bg: `rgb(${r},${g},${b})` };
-  }
-  return null;
-}
-
-function applySgr(style: Style, code: number): Style {
-  const next = { ...style };
+function applySgrCode(style: Style, code: number): Style {
   if (code === 0) return {};
+  const next = { ...style };
   if (code === 1) {
     next.bold = true;
     return next;
   }
   const rgb = rgbFromCode(code);
   if (rgb) {
-    next.fg = `rgb(${rgb.join(",")})`;
+    next.fg = rgbCss(...rgb);
     return next;
   }
   if (code >= 30 && code <= 37) {
     const rgb2 = rgbFromCode(code);
-    if (rgb2) next.fg = `rgb(${rgb2.join(",")})`;
+    if (rgb2) next.fg = rgbCss(...rgb2);
     return next;
   }
   if (code >= 90 && code <= 97) {
     const rgb2 = rgbFromCode(code - 60);
-    if (rgb2) next.fg = `rgb(${rgb2.join(",")})`;
+    if (rgb2) next.fg = rgbCss(...rgb2);
     return next;
   }
   return next;
+}
+
+/** Apply all SGR codes in one CSI sequence (e.g. 1;38;2;251;191;36). */
+export function applySgrSequence(codes: string[]): Style {
+  if (codes.length === 0) return {};
+  let style: Style = {};
+  for (let i = 0; i < codes.length; ) {
+    if (codes[i] === "38" && codes[i + 1] === "2") {
+      const r = parseRgbChannel(codes[i + 2]);
+      const g = parseRgbChannel(codes[i + 3]);
+      const b = parseRgbChannel(codes[i + 4]);
+      if (r !== null && g !== null && b !== null) {
+        style = { ...style, fg: rgbCss(r, g, b) };
+      }
+      i += 5;
+      continue;
+    }
+    if (codes[i] === "48" && codes[i + 1] === "2") {
+      const r = parseRgbChannel(codes[i + 2]);
+      const g = parseRgbChannel(codes[i + 3]);
+      const b = parseRgbChannel(codes[i + 4]);
+      if (r !== null && g !== null && b !== null) {
+        style = { ...style, bg: rgbCss(r, g, b) };
+      }
+      i += 5;
+      continue;
+    }
+    const n = Number(codes[i]);
+    if (!Number.isNaN(n)) style = applySgrCode(style, n);
+    i += 1;
+  }
+  return style;
 }
 
 export function ansiToHtml(text: string): string {
@@ -104,18 +133,11 @@ export function ansiToHtml(text: string): string {
       }
       const body = text.slice(i + 2, end);
       const codes = body.split(";").filter((c) => c.length > 0);
-      if (codes.length === 0) {
+      const delta = applySgrSequence(codes);
+      if (codes.length === 0 || (codes.length === 1 && codes[0] === "0")) {
         style = {};
       } else {
-        const tc = parseTrueColor(codes);
-        if (tc) {
-          style = { ...style, ...tc };
-        } else {
-          for (const c of codes) {
-            const n = Number(c);
-            if (!Number.isNaN(n)) style = applySgr(style, n);
-          }
-        }
+        style = { ...style, ...delta };
       }
       i = end + 1;
       continue;

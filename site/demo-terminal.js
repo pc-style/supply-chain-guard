@@ -1,10 +1,12 @@
 /** Live terminal player — renders captured scguard CLI output. */
 
 const DEMO_DATA_BASE = "./demo-data";
-const manifestPromise = fetch(`${DEMO_DATA_BASE}/manifest.json`).then((r) => {
-  if (!r.ok) throw new Error("demo manifest missing — run: bun run scripts/capture-demos.ts");
-  return r.json();
-});
+
+async function loadManifest() {
+  const res = await fetch(`${DEMO_DATA_BASE}/manifest.json`);
+  if (!res.ok) throw new Error("demo manifest missing — run: bun run scripts/capture-demos.ts");
+  return res.json();
+}
 
 const cache = new Map();
 
@@ -30,6 +32,11 @@ function renderTerminal(demo, bodyEl, titleEl, cmdEl) {
   bodyEl.scrollTop = 0;
 }
 
+function showDemoError(body, message) {
+  if (!body) return;
+  body.innerHTML = `<div class="term-line term-dim">${message}</div>`;
+}
+
 export async function initDemoTerminal(root = document) {
   const tabs = root.querySelectorAll(".ptab[data-shot]");
   const body = root.getElementById("terminal-body");
@@ -38,15 +45,37 @@ export async function initDemoTerminal(root = document) {
   const frame = root.getElementById("player-frame");
   if (!tabs.length || !body) return;
 
-  await manifestPromise;
-  const first = tabs[0]?.getAttribute("data-shot");
-  if (first) {
-    const demo = await loadDemo(first);
-    renderTerminal(demo, body, title, cmd);
+  try {
+    await loadManifest();
+  } catch (err) {
+    showDemoError(body, "Demo unavailable — use README screenshots or run capture-demos.");
+    console.warn(err);
+    return;
   }
 
+  let loadSeq = 0;
+
+  async function showShot(shot) {
+    const seq = ++loadSeq;
+    frame?.classList.add("loading");
+    try {
+      const demo = await loadDemo(shot);
+      if (seq !== loadSeq) return;
+      renderTerminal(demo, body, title, cmd);
+    } catch (err) {
+      if (seq !== loadSeq) return;
+      showDemoError(body, `Failed to load demo: ${shot}`);
+      console.warn(err);
+    } finally {
+      if (seq === loadSeq) frame?.classList.remove("loading");
+    }
+  }
+
+  const first = tabs[0]?.getAttribute("data-shot");
+  if (first) await showShot(first);
+
   tabs.forEach((tab) => {
-    tab.addEventListener("click", async () => {
+    tab.addEventListener("click", () => {
       tabs.forEach((t) => {
         t.classList.remove("active");
         t.setAttribute("aria-selected", "false");
@@ -54,20 +83,22 @@ export async function initDemoTerminal(root = document) {
       tab.classList.add("active");
       tab.setAttribute("aria-selected", "true");
       const shot = tab.getAttribute("data-shot");
-      if (!shot) return;
-      frame?.classList.add("loading");
-      try {
-        const demo = await loadDemo(shot);
-        renderTerminal(demo, body, title, cmd);
-      } finally {
-        frame?.classList.remove("loading");
-      }
+      if (shot) showShot(shot);
     });
+  });
+
+}
+
+function boot() {
+  initDemoTerminal().catch((err) => {
+    const body = document.getElementById("terminal-body");
+    showDemoError(body, "Demo unavailable.");
+    console.warn(err);
   });
 }
 
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", () => initDemoTerminal());
+  document.addEventListener("DOMContentLoaded", boot);
 } else {
-  initDemoTerminal();
+  boot();
 }

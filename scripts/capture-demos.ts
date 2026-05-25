@@ -104,10 +104,13 @@ async function scguard(args: string[], cwd: string, extraEnv?: Record<string, st
 async function ensureDemoVsix(): Promise<void> {
   const { code } = await runCmd("test", ["-f", DEMO_VSIX]);
   if (code === 0) return;
-  await runCmd("bash", [
+  const zip = await runCmd("bash", [
     "-c",
     `cd "${DEMO_EXT}" && zip -qr "${DEMO_VSIX}" extension extension.vsixmanifest`,
   ]);
+  if (zip.code !== 0) {
+    throw new Error(`Failed to build demo VSIX (exit ${zip.code}): ${zip.stderr || zip.stdout}`);
+  }
 }
 
 async function makeWorkspace(): Promise<string> {
