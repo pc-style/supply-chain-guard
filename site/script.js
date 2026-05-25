@@ -29,30 +29,4 @@ document.querySelectorAll("[data-copy]").forEach((btn) => {
   });
 });
 
-const tabs = document.querySelectorAll(".ptab");
-const img = document.getElementById("player-img");
-const playerTitle = document.getElementById("player-title");
-const titles = {
-  "scan-npm": "scanning an npm package",
-  "add-withheld": "staged without installing",
-  "add-approved": "install after approval",
-  "block-broad-update": "blocking a broad update",
-  "scan-vsix": "scanning a vsix extension",
-  "generated-reports": "generated reports",
-};
-
-tabs.forEach((tab) => {
-  tab.addEventListener("click", () => {
-    tabs.forEach((t) => {
-      t.classList.remove("active");
-      t.setAttribute("aria-selected", "false");
-    });
-    tab.classList.add("active");
-    tab.setAttribute("aria-selected", "true");
-    const shot = tab.getAttribute("data-shot");
-    if (!shot || !img) return;
-    img.src = `./screenshots/${shot}.png`;
-    img.alt = titles[shot] || shot;
-    if (playerTitle) playerTitle.textContent = titles[shot] || shot;
-  });
-});
+// Demo tab switching is handled by demo-terminal.js (live captured CLI output).

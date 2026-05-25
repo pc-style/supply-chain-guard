@@ -356,8 +356,62 @@ main {
   color: var(--muted);
   border-bottom: 1px solid var(--border);
 }
-.player-frame { background: var(--bg); }
+.player-frame {
+  background: var(--bg);
+  min-height: 280px;
+}
+.player-frame.loading .terminal-body { opacity: 0.55; }
 .player-frame img { width: 100%; display: block; }
+
+/* terminal chrome (captured CLI output) */
+.terminal {
+  margin: 0;
+  border-radius: 0;
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.terminal-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 14px;
+  background: #1a1515;
+  border-bottom: 1px solid var(--border);
+}
+.terminal-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.terminal-dot-red { background: #f87171; }
+.terminal-dot-yellow { background: #fbbf24; }
+.terminal-dot-green { background: #4ade80; }
+.terminal-cmd {
+  flex: 1;
+  min-width: 0;
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--muted-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.terminal-body {
+  margin: 0;
+  padding: 16px 18px 20px;
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: min(62vh, 520px);
+  background: #120f0f;
+  color: #e4e4e7;
+  white-space: pre;
+  tab-size: 2;
+}
+.term-line { min-height: 1.55em; }
+.term-dim { color: var(--muted-2); }
 
 /* commands */
 .cmd-primary {

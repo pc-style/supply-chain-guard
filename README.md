@@ -45,10 +45,6 @@ The installer is also the updater. It clones or pulls this repo into `~/.local/s
 
 ## Demo
 
-The CLI is intentionally plain. `scguard --help` shows the install gate, scan, shell hook, config, and agent-review commands:
-
-![Supply Chain Guard help output](docs/screenshots/help.png)
-
 Scan a package before it is installed:
 
 ![Supply Chain Guard scanning an npm package](docs/screenshots/scan-npm.png)
@@ -71,9 +67,12 @@ Every run leaves JSON, Markdown, and agent-review prompts under `.scguard/report
 
 ![Supply Chain Guard generated reports](docs/screenshots/generated-reports.png)
 
-The demo script cleans up its temporary workspace when it finishes:
+Demo captures are generated from real CLI runs:
 
-![Supply Chain Guard demo completion](docs/screenshots/demo-complete.png)
+```sh
+bun run demo-screenshots   # capture JSON + regenerate PNGs
+bun run capture-demos      # JSON only (site live terminal)
+```
 
 ## Requirements
 
