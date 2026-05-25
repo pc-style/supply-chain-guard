@@ -1,69 +1,66 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#0d0d0d"/>
-      <stop offset="100%" stop-color="#161616"/>
+      <stop offset="0%" stop-color="#0f0d0d"/>
+      <stop offset="100%" stop-color="#171313"/>
     </linearGradient>
-    <linearGradient id="amber" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#fcd34d"/>
-      <stop offset="100%" stop-color="#f59e0b"/>
-    </linearGradient>
-    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
-      <path d="M32 0 L0 0 0 32" fill="none" stroke="#1f1f1f" stroke-width="1"/>
-    </pattern>
-    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="4" result="b"/>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="18" result="b"/>
       <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
   </defs>
 
   <rect width="1200" height="630" fill="url(#bg)"/>
-  <rect width="1200" height="630" fill="url(#grid)"/>
 
-  <!-- shield mark -->
-  <g transform="translate(96 175)">
-    <path d="M140 0 L280 50 V150 c0 86 -55 138 -140 170 C55 290 0 238 0 150 V50 Z"
-          fill="none" stroke="url(#amber)" stroke-width="16" stroke-linejoin="round" filter="url(#glow)"/>
-    <path d="M82 162 L132 212 L208 122"
-          fill="none" stroke="url(#amber)" stroke-width="18"
-          stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- subtle accent wash -->
+  <ellipse cx="900" cy="120" rx="280" ry="200" fill="#fb7185" opacity="0.06"/>
+  <ellipse cx="200" cy="520" rx="320" ry="180" fill="#fb7185" opacity="0.04"/>
+
+  <!-- left: wordmark -->
+  <g font-family="ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    <text x="96" y="200" font-size="22" font-weight="500" fill="#9a7878" letter-spacing="0.02em">peel back the package first</text>
+    <text x="96" y="290" font-size="72" font-weight="800" fill="#fff0ee" letter-spacing="-2.5">review before</text>
+    <text x="96" y="370" font-size="72" font-weight="800" fill="#fff0ee" letter-spacing="-2.5">you install.</text>
+    <text x="96" y="430" font-size="26" font-weight="500" fill="#9a7878">local npm &amp; vs code review — no telemetry</text>
   </g>
 
-  <!-- wordmark + tagline -->
-  <g font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif">
-    <text x="470" y="262" font-size="64" font-weight="800" fill="#fafafa" letter-spacing="-1.5">
-      Supply Chain Guard
-    </text>
-    <text x="472" y="312" font-size="26" font-weight="500" fill="#a1a1aa" letter-spacing="-0.2">
-      A local review step before npm and VS Code installs.
-    </text>
+  <!-- right: findings card -->
+  <g transform="translate(640 140)">
+    <rect width="464" height="350" rx="16" fill="#171313" stroke="#251e1e" stroke-width="1"/>
+    <text x="24" y="44" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#9a7878">left-pad · review</text>
+    <line x1="24" y1="56" x2="440" y2="56" stroke="#251e1e" stroke-width="1"/>
 
-    <!-- terminal chip -->
-    <g transform="translate(470 380)">
-      <rect width="640" height="88" rx="14" fill="#0a0a0a" stroke="#27272a" stroke-width="1"/>
-      <circle cx="22" cy="44" r="6" fill="#ff5f57"/>
-      <circle cx="42" cy="44" r="6" fill="#febc2e"/>
-      <circle cx="62" cy="44" r="6" fill="#28c840"/>
-      <text x="92" y="54" font-family="JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace" font-size="26" fill="#e4e4e7">
-        <tspan fill="#fbbf24" font-weight="700">$</tspan> scguard review <tspan fill="#93c5fd">left-pad</tspan>
-      </text>
+    <!-- finding rows -->
+    <g transform="translate(24 78)">
+      <rect width="416" height="52" rx="10" fill="#0f0d0d" stroke="#251e1e"/>
+      <rect x="14" y="16" width="52" height="22" rx="5" fill="rgba(251,113,133,0.15)"/>
+      <text x="40" y="32" text-anchor="middle" font-family="ui-monospace, monospace" font-size="13" font-weight="700" fill="#fb7185">HIGH</text>
+      <text x="78" y="32" font-family="ui-monospace, monospace" font-size="15" fill="#fff0ee">postinstall — network exfiltration</text>
+    </g>
+    <g transform="translate(24 142)">
+      <rect width="416" height="52" rx="10" fill="#0f0d0d" stroke="#251e1e"/>
+      <rect x="14" y="16" width="52" height="22" rx="5" fill="rgba(251,146,60,0.12)"/>
+      <text x="40" y="32" text-anchor="middle" font-family="ui-monospace, monospace" font-size="13" font-weight="700" fill="#fb923c">MED</text>
+      <text x="78" y="32" font-family="ui-monospace, monospace" font-size="15" fill="#9a7878">preinstall — remote script via curl</text>
+    </g>
+    <g transform="translate(24 206)">
+      <rect width="416" height="52" rx="10" fill="#0f0d0d" stroke="#251e1e"/>
+      <rect x="14" y="16" width="52" height="22" rx="5" fill="rgba(251,113,133,0.07)"/>
+      <text x="40" y="32" text-anchor="middle" font-family="ui-monospace, monospace" font-size="13" font-weight="700" fill="#9a7878">LOW</text>
+      <text x="78" y="32" font-family="ui-monospace, monospace" font-size="15" fill="#9a7878">prepare — build script with fs access</text>
     </g>
 
-    <!-- badges row -->
-    <g transform="translate(470 500)" font-family="JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20" font-weight="700">
-      <g>
-        <rect width="74" height="34" rx="6" fill="#f87171"/>
-        <text x="37" y="24" text-anchor="middle" fill="#0d0d0d">HIGH</text>
-      </g>
-      <g transform="translate(86 0)">
-        <rect width="74" height="34" rx="6" fill="#fbbf24"/>
-        <text x="37" y="24" text-anchor="middle" fill="#0d0d0d">MED</text>
-      </g>
-      <g transform="translate(172 0)">
-        <rect width="74" height="34" rx="6" fill="#4ade80"/>
-        <text x="37" y="24" text-anchor="middle" fill="#0d0d0d">LOW</text>
-      </g>
-      <text x="262" y="24" font-weight="500" fill="#a1a1aa">deterministic local analysis</text>
+    <g transform="translate(24 278)">
+      <rect width="416" height="48" rx="10" fill="rgba(251,113,133,0.06)" stroke="rgba(251,113,133,0.2)"/>
+      <text x="208" y="32" text-anchor="middle" font-family="ui-monospace, monospace" font-size="16" fill="#fb7185">install blocked · 2 high-risk issues</text>
     </g>
   </g>
+
+  <!-- shield watermark -->
+  <g transform="translate(96 500)" opacity="0.35">
+    <path d="M0 0 L28 10 V26c0 10-6 16-14 19C6 42 0 36 0 26V10Z"
+          fill="none" stroke="#fb7185" stroke-width="3" stroke-linejoin="round" filter="url(#glow)"/>
+  </g>
+
+  <text x="96" y="560" font-family="ui-monospace, monospace" font-size="18" fill="#6a5050">supply chain guard · scguard.pcstyle.dev</text>
 </svg>
