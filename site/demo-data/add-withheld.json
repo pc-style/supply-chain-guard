@@ -3,7 +3,7 @@
   "title": "staged without installing",
   "command": "scguard review chalk@5.4.1",
   "cwd": "./demo",
-  "capturedAt": "2026-05-25T17:38:03.915Z",
+  "capturedAt": "2026-05-25T17:48:39.712Z",
   "lines": [
     "$ scguard review chalk@5.4.1",
     "<span style=\"font-weight:600;color:rgb(251,191,36)\">Findings</span> <span style=\"color:rgb(113,113,122)\">────────────────────────────────────────────────</span>",

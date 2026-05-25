@@ -134,8 +134,9 @@ export function ansiToHtml(text: string): string {
       const body = text.slice(i + 2, end);
       const codes = body.split(";").filter((c) => c.length > 0);
       const delta = applySgrSequence(codes);
-      if (codes.length === 0 || (codes.length === 1 && codes[0] === "0")) {
-        style = {};
+      // Reset (0) in a sequence clears prior styles before later codes in the same sequence.
+      if (codes.length === 0 || codes.includes("0")) {
+        style = delta;
       } else {
         style = { ...style, ...delta };
       }

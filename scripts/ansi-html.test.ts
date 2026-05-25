@@ -25,4 +25,11 @@ describe("ansiToHtml", () => {
     const html = ansiToHtml("<script>");
     expect(html).toBe("&lt;script&gt;");
   });
+
+  test("0;31 resets bold before applying red", () => {
+    const html = ansiToHtml("\x1b[1mkeep\x1b[0;31mred\x1b[0m");
+    expect(html).toContain("font-weight:600");
+    expect(html).toContain("rgb(248,113,113)");
+    expect(html).not.toMatch(/font-weight:600[^<]*rgb\(248,113,113\)/);
+  });
 });

@@ -3,7 +3,7 @@
   "title": "generated reports",
   "command": "ls .scguard/reports/",
   "cwd": "./demo",
-  "capturedAt": "2026-05-25T17:38:04.867Z",
+  "capturedAt": "2026-05-25T17:48:40.664Z",
   "lines": [
     "$ ls .scguard/reports/",
     "chalk@5.4.1-report.json",

@@ -3,7 +3,7 @@
   "title": "scanning a vsix extension",
   "command": "scguard scan-vsix ./demo-theme.vsix",
   "cwd": "./demo",
-  "capturedAt": "2026-05-25T17:38:04.533Z",
+  "capturedAt": "2026-05-25T17:48:40.355Z",
   "lines": [
     "$ scguard scan-vsix ./demo-theme.vsix",
     "<span style=\"font-weight:600;color:rgb(251,191,36)\">Supply Chain Guard Report</span> <span style=\"color:rgb(113,113,122)\">───────────────────────────────</span>",
