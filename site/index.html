@@ -34,9 +34,10 @@
     <link rel="stylesheet" href="./stack-diagram.css" />
   </head>
   <body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
     <header class="nav">
       <div class="nav-inner">
-        <a class="brand" href="#top">supply chain guard</a>
+        <a class="brand" href="#main-content">supply chain guard</a>
         <nav class="nav-links" aria-label="Primary">
           <a href="#checks">checks</a>
           <a href="#how">flow</a>
@@ -46,7 +47,7 @@
         <a class="nav-cta" href="https://github.com/pc-style/supply-chain-guard" target="_blank" rel="noreferrer">github</a>
       </div>
     </header>
-    <main id="top">
+    <main id="main-content">
       <section class="hero">
         <div>
           <span class="pill">peel back the package first</span>
@@ -128,16 +129,16 @@
         <div class="panel-eyebrow">in motion</div>
         <h2 class="section-title">see it work</h2>
         <div class="player">
-          <div class="player-tabs" role="tablist">
-            <button class="ptab active" data-shot="scan-npm" role="tab" aria-selected="true">scan npm</button>
-            <button class="ptab" data-shot="add-withheld" role="tab">stage only</button>
-            <button class="ptab" data-shot="add-approved" role="tab">approved</button>
-            <button class="ptab" data-shot="block-broad-update" role="tab">block update</button>
-            <button class="ptab" data-shot="scan-vsix" role="tab">vsix</button>
-            <button class="ptab" data-shot="generated-reports" role="tab">reports</button>
+          <div class="player-tabs" role="tablist" aria-label="Demo scenarios">
+            <button class="ptab active" type="button" data-shot="scan-npm" role="tab" id="tab-scan-npm" aria-selected="true" aria-controls="player-frame" tabindex="0">scan npm</button>
+            <button class="ptab" type="button" data-shot="add-withheld" role="tab" id="tab-add-withheld" aria-selected="false" aria-controls="player-frame" tabindex="-1">stage only</button>
+            <button class="ptab" type="button" data-shot="add-approved" role="tab" id="tab-add-approved" aria-selected="false" aria-controls="player-frame" tabindex="-1">approved</button>
+            <button class="ptab" type="button" data-shot="block-broad-update" role="tab" id="tab-block-broad-update" aria-selected="false" aria-controls="player-frame" tabindex="-1">block update</button>
+            <button class="ptab" type="button" data-shot="scan-vsix" role="tab" id="tab-scan-vsix" aria-selected="false" aria-controls="player-frame" tabindex="-1">vsix</button>
+            <button class="ptab" type="button" data-shot="generated-reports" role="tab" id="tab-generated-reports" aria-selected="false" aria-controls="player-frame" tabindex="-1">reports</button>
           </div>
-          <div class="player-bar" id="player-title">scanning an npm package</div>
-          <div class="player-frame" id="player-frame">
+          <div class="player-bar" id="player-title" role="status" aria-live="polite">scanning an npm package</div>
+          <div class="player-frame" id="player-frame" role="tabpanel" aria-labelledby="tab-scan-npm">
             <div class="terminal" role="img" aria-label="Terminal demo output">
               <div class="terminal-titlebar">
                 <span class="terminal-dot terminal-dot-red" aria-hidden="true"></span>
@@ -145,7 +146,7 @@
                 <span class="terminal-dot terminal-dot-green" aria-hidden="true"></span>
                 <span class="terminal-cmd" id="terminal-cmd">./demo $ scguard review chalk@5.4.1</span>
               </div>
-              <pre class="terminal-body" id="terminal-body"><span class="term-line term-dim">loading captured output…</span></pre>
+              <pre class="terminal-body" id="terminal-body" tabindex="0"><span class="term-line term-dim">loading captured output…</span></pre>
             </div>
             <noscript>
               <img src="./screenshots/scan-npm.png" alt="scguard review chalk demo" width="1200" height="675" />
