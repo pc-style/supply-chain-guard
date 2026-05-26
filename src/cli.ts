@@ -326,6 +326,8 @@ async function help() {
     "Override the active preset for the current shell session.",
   );
   env("SCGUARD_OFFLINE=1", "Disable all network calls (same as --offline).");
+  env("NO_COLOR", "Disable ANSI colors (also honored by SCGUARD_NO_COLOR).");
+  env("SCGUARD_NO_COLOR", "Disable ANSI colors in CLI output.");
   console.log("");
 }
 

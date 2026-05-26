@@ -1,0 +1,84 @@
+name: Accessibility issue
+description: Report a barrier using the CLI, website, or docs with assistive technology or keyboard-only use.
+title: "[A11y] "
+labels:
+  - accessibility
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve access for everyone. Please read [ACCESSIBILITY.md](../../ACCESSIBILITY.md) before filing.
+
+        Remove or obscure personal information from logs and screenshots.
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: See ACCESSIBILITY.md for definitions.
+      options:
+        - Critical — cannot complete a core task
+        - High — major barrier; workaround is difficult
+        - Medium — inconsistent or confusing experience
+        - Low — minor issue
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface is affected?
+      multiple: true
+      options:
+        - CLI (scguard terminal output)
+        - Marketing site (scguard.pcstyle.dev)
+        - Documentation (README / CONTRIBUTING / ACCESSIBILITY.md)
+        - Install script
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: scguard version
+      description: Output of `scguard version` if the CLI is involved.
+      placeholder: "0.1.1"
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, terminal app or browser, and assistive technology (e.g. macOS 14, iTerm, VoiceOver).
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact on you
+      description: What you were trying to do and how the barrier affects your workflow.
+    validations:
+      required: true
+  - type: textarea
+    id: repro-steps
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Logs, JSON report excerpts, screenshots, or WCAG criterion if you know it.

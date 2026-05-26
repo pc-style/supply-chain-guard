@@ -81,6 +81,7 @@ export async function reviewOrInstall(
   const dev = cleanArgs.includes("--dev") || cleanArgs.includes("-d");
   const agentMode = await resolveAgentMode(args);
   const sbom = args.includes("--sbom");
+  const json = args.includes("--json");
   const offline = isOfflineMode(args);
   const emitOpts = { sbom };
   const passed: string[] = [];
@@ -89,7 +90,7 @@ export async function reviewOrInstall(
       `Resolving graph and simulating install for ${spec}...`,
       () => scanNpm(spec, { offline }),
     );
-    let reportPath = await emitReport(report, false, emitOpts);
+    let reportPath = await emitReport(report, json, emitOpts);
     if (!report.summary.installAllowed) {
       throw new Error(
         [
@@ -103,10 +104,10 @@ export async function reviewOrInstall(
     if (agentMode.length > 0) {
       const reviews = await runAgentReviews(report, reportPath, agentMode);
       report.agentReviews = reviews;
-      reportPath = await emitReport(report, false, emitOpts);
+      reportPath = await emitReport(report, json, emitOpts);
       blockOnFailedReview(spec, reviews);
     }
-    printNextSteps(spec, reportPath, opts.install);
+    if (!json) printNextSteps(spec, reportPath, opts.install);
     passed.push(spec);
   }
   if (!opts.install) return;

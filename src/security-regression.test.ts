@@ -114,6 +114,21 @@ describe("security regressions", () => {
     expect(result.specs).toEqual(["lodash"]);
   });
 
+  test("package manager self-updates are not guarded package operations", () => {
+    expect(classifyPackageCommand("bun", ["upgrade"])).toEqual({
+      packageOperation: false,
+      kind: "npm",
+      action: "upgrade",
+      specs: [],
+    });
+    expect(classifyPackageCommand("pnpm", ["self-update"])).toEqual({
+      packageOperation: false,
+      kind: "npm",
+      action: "self-update",
+      specs: [],
+    });
+  });
+
   test("default preset scans entire lockfile when no baseline exists", () => {
     const selection = planLockfileSelection(
       [{ name: "old-pkg", version: "9.9.9" }],

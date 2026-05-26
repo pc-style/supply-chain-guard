@@ -19,14 +19,21 @@ document.querySelectorAll("[data-copy]").forEach((btn) => {
       sel?.removeAllRanges();
       span.remove();
     }
-    btn.classList.add("copied");
-    const label = btn.querySelector(".copy-label");
-    if (label) label.textContent = "copied";
-    setTimeout(() => {
-      btn.classList.remove("copied");
-      if (label) label.textContent = "copy install";
-    }, 1600);
+    copyFeedback(btn, "copied");
   });
 });
+
+function copyFeedback(button, message) {
+  if (!(button instanceof HTMLElement)) return;
+  const status = document.getElementById("copy-status");
+  if (status) status.textContent = message;
+  const prev = button.getAttribute("data-copy-label");
+  const next = prev || button.textContent || "";
+  button.textContent = message;
+  window.setTimeout(() => {
+    button.textContent = next;
+    if (status && status.textContent === message) status.textContent = "";
+  }, 1200);
+}
 
 // Demo tab switching is handled by demo-terminal.js (live captured CLI output).

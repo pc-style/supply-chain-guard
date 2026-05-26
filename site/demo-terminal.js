@@ -39,11 +39,12 @@ function showDemoError(body, message) {
 
 export async function initDemoTerminal(root = document) {
   const tabs = root.querySelectorAll(".ptab[data-shot]");
+  const tablist = root.querySelector('[role="tablist"]');
   const body = root.getElementById("terminal-body");
   const title = root.getElementById("player-title");
   const cmd = root.getElementById("terminal-cmd");
   const frame = root.getElementById("player-frame");
-  if (!tabs.length || !body) return;
+  if (!tabs.length || !body || !tablist) return;
 
   try {
     await loadManifest();
@@ -74,17 +75,36 @@ export async function initDemoTerminal(root = document) {
   const first = tabs[0]?.getAttribute("data-shot");
   if (first) await showShot(first);
 
-  tabs.forEach((tab) => {
-    tab.addEventListener("click", () => {
-      tabs.forEach((t) => {
-        t.classList.remove("active");
-        t.setAttribute("aria-selected", "false");
-      });
-      tab.classList.add("active");
-      tab.setAttribute("aria-selected", "true");
-      const shot = tab.getAttribute("data-shot");
-      if (shot) showShot(shot);
+  function activateTab(tab) {
+    tabs.forEach((t) => {
+      const on = t === tab;
+      t.classList.toggle("active", on);
+      t.setAttribute("aria-selected", on ? "true" : "false");
+      t.tabIndex = on ? 0 : -1;
     });
+    if (frame && tab.id) frame.setAttribute("aria-labelledby", tab.id);
+    const shot = tab.getAttribute("data-shot");
+    if (shot) showShot(shot);
+  }
+
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => activateTab(tab));
+  });
+
+  tablist?.addEventListener("keydown", (event) => {
+    const list = [...tabs];
+    const i = list.indexOf(document.activeElement);
+    if (i < 0) return;
+    let next = i;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") next = (i + 1) % list.length;
+    else if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = (i - 1 + list.length) % list.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = list.length - 1;
+    else return;
+    event.preventDefault();
+    const target = list[next];
+    target.focus();
+    activateTab(target);
   });
 
 }
