@@ -61,9 +61,9 @@ representative at an online or offline event.
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement at
 [https://github.com/pc-style/supply-chain-guard/issues](https://github.com/pc-style/supply-chain-guard/issues)
-(choose a private report if GitHub offers that option for your account) or
-through a [GitHub security advisory](https://github.com/pc-style/supply-chain-guard/security/advisories/new)
-when the report involves safety or credentials.
+for general reports. For private reports (including safety concerns or
+credential exposure), use a
+[GitHub security advisory](https://github.com/pc-style/supply-chain-guard/security/advisories/new).
 
 All complaints will be reviewed and investigated promptly and fairly.
 

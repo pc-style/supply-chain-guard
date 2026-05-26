@@ -67,7 +67,7 @@ Optional manual checks: [Axe DevTools](https://www.deque.com/axe/devtools/) on t
 ## CLI accessibility notes
 
 - **JSON:** `scguard scan-npm`, `scguard scan-stage`, `scguard scan-vsix`, `scguard review`, and `scguard install` accept `--json` to print the report schema to stdout. Reports are always written under `.scguard/reports/`.
-- **Exit codes:** `0` success, `1` usage/runtime error, `2` policy block or failed agent review.
+- **Exit codes:** `0` success, `1` usage/runtime error, `2` policy block for `scan-lockfile` and non-approved results from `agent-review`.
 - **Color:** Severity uses words and badges, not color alone. Set `NO_COLOR=1` or `SCGUARD_NO_COLOR=1` for plain text.
 - **Help:** `scguard --help` lists commands and environment variables in plain text.
 

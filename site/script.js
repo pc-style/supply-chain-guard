@@ -23,4 +23,17 @@ document.querySelectorAll("[data-copy]").forEach((btn) => {
   });
 });
 
+function copyFeedback(button, message) {
+  if (!(button instanceof HTMLElement)) return;
+  const status = document.getElementById("copy-status");
+  if (status) status.textContent = message;
+  const prev = button.getAttribute("data-copy-label");
+  const next = prev || button.textContent || "";
+  button.textContent = message;
+  window.setTimeout(() => {
+    button.textContent = next;
+    if (status && status.textContent === message) status.textContent = "";
+  }, 1200);
+}
+
 // Demo tab switching is handled by demo-terminal.js (live captured CLI output).

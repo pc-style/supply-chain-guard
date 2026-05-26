@@ -39,11 +39,12 @@ function showDemoError(body, message) {
 
 export async function initDemoTerminal(root = document) {
   const tabs = root.querySelectorAll(".ptab[data-shot]");
+  const tablist = root.querySelector('[role="tablist"]');
   const body = root.getElementById("terminal-body");
   const title = root.getElementById("player-title");
   const cmd = root.getElementById("terminal-cmd");
   const frame = root.getElementById("player-frame");
-  if (!tabs.length || !body) return;
+  if (!tabs.length || !body || !tablist) return;
 
   try {
     await loadManifest();
