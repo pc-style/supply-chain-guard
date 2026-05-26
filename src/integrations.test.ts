@@ -1,17 +1,23 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { parseAgentDecision } from "./integrations";
 
 describe("parseAgentDecision", () => {
   test("clean approve on its own line", () => {
-    expect(parseAgentDecision("Analysis done.\nSCGUARD_DECISION: approve")).toBe("approved");
+    expect(
+      parseAgentDecision("Analysis done.\nSCGUARD_DECISION: approve"),
+    ).toBe("approved");
   });
 
   test("clean reject", () => {
-    expect(parseAgentDecision("This is dangerous.\nSCGUARD_DECISION: reject")).toBe("rejected");
+    expect(
+      parseAgentDecision("This is dangerous.\nSCGUARD_DECISION: reject"),
+    ).toBe("rejected");
   });
 
   test("manual-review", () => {
-    expect(parseAgentDecision("Unclear.\nSCGUARD_DECISION: manual-review")).toBe("manual-review");
+    expect(
+      parseAgentDecision("Unclear.\nSCGUARD_DECISION: manual-review"),
+    ).toBe("manual-review");
   });
 
   test("case-insensitive decision", () => {
@@ -19,11 +25,15 @@ describe("parseAgentDecision", () => {
   });
 
   test("leading whitespace on decision line", () => {
-    expect(parseAgentDecision("  SCGUARD_DECISION: approve  ")).toBe("approved");
+    expect(parseAgentDecision("  SCGUARD_DECISION: approve  ")).toBe(
+      "approved",
+    );
   });
 
   test("no decision → manual-review (fail closed)", () => {
-    expect(parseAgentDecision("I think this package looks fine.")).toBe("manual-review");
+    expect(parseAgentDecision("I think this package looks fine.")).toBe(
+      "manual-review",
+    );
   });
 
   test("empty output → manual-review", () => {
@@ -47,7 +57,8 @@ describe("parseAgentDecision", () => {
   });
 
   test("last decision wins when same value repeated", () => {
-    const output = "SCGUARD_DECISION: approve\nsome analysis\nSCGUARD_DECISION: approve";
+    const output =
+      "SCGUARD_DECISION: approve\nsome analysis\nSCGUARD_DECISION: approve";
     expect(parseAgentDecision(output)).toBe("approved");
   });
 

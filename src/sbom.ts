@@ -55,7 +55,10 @@ function parseTarget(report: Report): { name: string; version: string } {
       : target;
     const at = cleaned.lastIndexOf("@");
     if (at > 0) {
-      return { name: cleaned.slice(0, at), version: cleaned.slice(at + 1) || "0.0.0" };
+      return {
+        name: cleaned.slice(0, at),
+        version: cleaned.slice(at + 1) || "0.0.0",
+      };
     }
     return { name: cleaned, version: "0.0.0" };
   }
@@ -66,7 +69,11 @@ function parseTarget(report: Report): { name: string; version: string } {
   return { name, version };
 }
 
-function buildPurl(kind: Report["kind"], name: string, version: string): string | undefined {
+function buildPurl(
+  kind: Report["kind"],
+  name: string,
+  version: string,
+): string | undefined {
   if (kind === "npm" || kind === "npm-stage") {
     return `pkg:npm/${encodePurlName(name)}@${encodeURIComponent(version)}`;
   }

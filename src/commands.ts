@@ -1,39 +1,57 @@
 import { mkdir, rm } from "node:fs/promises";
-import { basename, delimiter, join, resolve } from "node:path";
 import { homedir } from "node:os";
+import { basename, delimiter, join, resolve } from "node:path";
+import {
+  freshnessWindowHoursForPreset,
+  scanNpm,
+  scanNpmLockfileEntry,
+  scanNpmStage,
+  scanVsix,
+} from "./analysis";
+import type {
+  AgentMode,
+  LockfileBaseline,
+  PackageAgeResult,
+  PolicyPreset,
+  ScanReason,
+} from "./core";
 import {
   CACHE_DIR,
   CLI_ENTRY,
   CONFIG_ENV_PATH,
-  REPORT_DIR,
-  ROOT,
-  WORK_DIR,
   commandExists,
   normalizeAgentMode,
   normalizePolicyPreset,
   normalizeSafeResolverMode,
+  REPORT_DIR,
+  ROOT,
   readActiveAdvisory,
   readConfig,
   readConfigFile,
   readLockfileBaseline,
-  readJson,
   readOption,
   requireActiveIncidentAcceptance,
   run,
   versionedPackageSet,
-  writeLockfileBaseline,
+  WORK_DIR,
   writeConfig,
+  writeLockfileBaseline,
 } from "./core";
-import type { AgentMode, LockfileBaseline, PackageAgeResult, PolicyPreset, ScanReason } from "./core";
-import { freshnessWindowHoursForPreset, scanNpm, scanNpmLockfileEntry, scanNpmStage, scanVsix } from "./analysis";
-import { resolveAgentMode, runAgentReviews } from "./integrations";
-import { checkPackageAge } from "./integrations";
+import {
+  checkPackageAge,
+  resolveAgentMode,
+  runAgentReviews,
+} from "./integrations";
+import {
+  type DetectedLockfile,
+  detectLockfile,
+  type LockfileEntry,
+  parseLockfile,
+} from "./lockfile";
+import { isOfflineMode, OFFLINE_ENV } from "./offline";
+import { buildInstallCommand, detectPackageManager } from "./pm";
 import { blockOnFailedReview, emitReport } from "./reporting";
 import { c, header, style, withSpinner } from "./ui";
-import { detectLockfile, parseLockfile, type DetectedLockfile, type LockfileEntry } from "./lockfile";
-import type { Report } from "./core";
-import { buildInstallCommand, detectPackageManager } from "./pm";
-import { isOfflineMode, OFFLINE_ENV } from "./offline";
 
 // Re-export so other modules (and the main agent's integrations.ts) can import
 // the offline helper through a single, stable path if they prefer.
@@ -47,11 +65,18 @@ export function isOffline(args: string[] = []): boolean {
   return isOfflineMode(args);
 }
 
-export async function reviewOrInstall(args: string[], opts: { install: boolean }) {
+export async function reviewOrInstall(
+  args: string[],
+  opts: { install: boolean },
+) {
   const cleanArgs = stripGuardOptions(args);
-  const specs = cleanArgs.filter((arg) => !arg.startsWith("--") && arg !== "-d");
+  const specs = cleanArgs.filter(
+    (arg) => !arg.startsWith("--") && arg !== "-d",
+  );
   if (specs.length === 0) {
-    throw new Error(`${opts.install ? "install" : "review"} requires at least one package spec, e.g. 'scguard ${opts.install ? "install" : "review"} react@18.3.1'`);
+    throw new Error(
+      `${opts.install ? "install" : "review"} requires at least one package spec, e.g. 'scguard ${opts.install ? "install" : "review"} react@18.3.1'`,
+    );
   }
   const dev = cleanArgs.includes("--dev") || cleanArgs.includes("-d");
   const agentMode = await resolveAgentMode(args);
@@ -66,12 +91,14 @@ export async function reviewOrInstall(args: string[], opts: { install: boolean }
     );
     let reportPath = await emitReport(report, false, emitOpts);
     if (!report.summary.installAllowed) {
-      throw new Error([
-        `Blocked ${spec}: high-risk findings.`,
-        `  Markdown report: ${reportPath.replace(/\.json$/, ".md")}`,
-        `  JSON report:     ${reportPath}`,
-        `  To override (not recommended): SCGUARD_BYPASS=1 <your install command>`,
-      ].join("\n"));
+      throw new Error(
+        [
+          `Blocked ${spec}: high-risk findings.`,
+          `  Markdown report: ${reportPath.replace(/\.json$/, ".md")}`,
+          `  JSON report:     ${reportPath}`,
+          `  To override (not recommended): SCGUARD_BYPASS=1 <your install command>`,
+        ].join("\n"),
+      );
     }
     if (agentMode.length > 0) {
       const reviews = await runAgentReviews(report, reportPath, agentMode);
@@ -98,16 +125,24 @@ export async function reviewOrInstall(args: string[], opts: { install: boolean }
   await run(installCmd.cmd, installCmd.args);
 }
 
-function printNextSteps(spec: string, reportPath: string, willInstall: boolean) {
-  const md = reportPath.replace(/\.json$/, ".md");
+function printNextSteps(
+  spec: string,
+  reportPath: string,
+  willInstall: boolean,
+) {
+  const _md = reportPath.replace(/\.json$/, ".md");
   console.log(header(`Next steps  ${c.dim(spec)}`));
   if (willInstall) {
     console.log(`${style.ok()}  ${c.gray("gate passed - installing now")}`);
   } else {
     console.log(`  ${c.gray("Inspect the report, then:")}`);
-    console.log(`    ${c.amber("$", true)} ${c.white(`scguard install ${spec}`)}`);
+    console.log(
+      `    ${c.amber("$", true)} ${c.white(`scguard install ${spec}`)}`,
+    );
     console.log(`  ${c.gray("Or request a deeper agent review:")}`);
-    console.log(`    ${c.amber("$", true)} ${c.white(`scguard agent-review ${reportPath} --agent codex`)}`);
+    console.log(
+      `    ${c.amber("$", true)} ${c.white(`scguard agent-review ${reportPath} --agent codex`)}`,
+    );
   }
   console.log("");
 }
@@ -120,28 +155,59 @@ const DOCTOR_FIX_HINTS: Record<string, string> = {
   "~/.local/bin on PATH": 'export PATH="$HOME/.local/bin:$PATH"',
   "shell hook active": 'eval "$(scguard shell-hook)"',
   "policy preset": "scguard config --preset default",
-  "SOCKET_API_KEY configured": "scguard config  # or visit socket.dev to get a key",
+  "SOCKET_API_KEY configured":
+    "scguard config  # or visit socket.dev to get a key",
 };
 
 export async function doctorCommand() {
   const checks: Array<{ name: string; ok: boolean; detail: string }> = [];
   for (const bin of ["bun", "git", "tar", "unzip"]) {
-    checks.push({ name: `dependency: ${bin}`, ok: await commandExists(bin), detail: `${bin} required` });
+    checks.push({
+      name: `dependency: ${bin}`,
+      ok: await commandExists(bin),
+      detail: `${bin} required`,
+    });
   }
   for (const bin of ["codex", "pi"]) {
     const ok = await commandExists(bin);
-    checks.push({ name: `optional agent: ${bin}`, ok, detail: ok ? "available" : "not installed (agent review unavailable)" });
+    checks.push({
+      name: `optional agent: ${bin}`,
+      ok,
+      detail: ok ? "available" : "not installed (agent review unavailable)",
+    });
   }
   const localBin = join(homedir(), ".local", "bin");
   const path = (Bun.env.PATH ?? "").split(delimiter);
-  checks.push({ name: `~/.local/bin on PATH`, ok: path.includes(localBin), detail: path.includes(localBin) ? localBin : `${localBin} missing from PATH` });
+  checks.push({
+    name: `~/.local/bin on PATH`,
+    ok: path.includes(localBin),
+    detail: path.includes(localBin)
+      ? localBin
+      : `${localBin} missing from PATH`,
+  });
   const hookActive = !!Bun.env.SCGUARD_SHELL_HOOK_ACTIVE;
-  checks.push({ name: `shell hook active`, ok: hookActive, detail: hookActive ? "active" : "run: eval \"$(scguard shell-hook)\"" });
+  checks.push({
+    name: `shell hook active`,
+    ok: hookActive,
+    detail: hookActive ? "active" : 'run: eval "$(scguard shell-hook)"',
+  });
   const tokenSet = !!Bun.env.SOCKET_API_KEY;
-  checks.push({ name: `SOCKET_API_KEY configured`, ok: tokenSet, detail: tokenSet ? "set" : "unset (Socket scoring disabled)" });
+  checks.push({
+    name: `SOCKET_API_KEY configured`,
+    ok: tokenSet,
+    detail: tokenSet ? "set" : "unset (Socket scoring disabled)",
+  });
   const config = await readConfig();
-  checks.push({ name: `policy preset`, ok: true, detail: `${config.preset} / safe-resolver=${config.safeResolver}` });
-  checks.push({ name: `default agent review`, ok: true, detail: config.agentReview });
+  checks.push({
+    name: `policy preset`,
+    ok: true,
+    detail: `${config.preset} / safe-resolver=${config.safeResolver}`,
+  });
+  checks.push({
+    name: `default agent review`,
+    ok: true,
+    detail: config.agentReview,
+  });
   checks.push({ name: `project root`, ok: true, detail: ROOT });
   checks.push({ name: `reports directory`, ok: true, detail: REPORT_DIR });
 
@@ -152,16 +218,22 @@ export async function doctorCommand() {
       ? `${style.check()} ${c.green("ok  ", true)}`
       : `${style.cross()} ${c.amber("warn", true)}`;
     if (!check.ok) allOk = false;
-    console.log(`  ${marker}  ${c.white(check.name.padEnd(28))} ${c.dim(check.detail)}`);
+    console.log(
+      `  ${marker}  ${c.white(check.name.padEnd(28))} ${c.dim(check.detail)}`,
+    );
     if (!check.ok && DOCTOR_FIX_HINTS[check.name]) {
-      console.log(`           ${c.dim(`fix: ${DOCTOR_FIX_HINTS[check.name]}`)}`);
+      console.log(
+        `           ${c.dim(`fix: ${DOCTOR_FIX_HINTS[check.name]}`)}`,
+      );
     }
   }
   console.log("");
   if (allOk) {
     console.log(`${style.ok()}  ${c.gray("all checks passed.")}`);
   } else {
-    console.log(`${c.amber("note", true)} ${c.gray("some checks failed. fix the items above for the smoothest experience.")}`);
+    console.log(
+      `${c.amber("note", true)} ${c.gray("some checks failed. fix the items above for the smoothest experience.")}`,
+    );
   }
 }
 
@@ -181,7 +253,9 @@ export async function cleanCommand(args: string[]) {
   for (const [label, dir] of targets) {
     await rm(dir, { recursive: true, force: true });
     await mkdir(dir, { recursive: true });
-    console.log(`${style.check()} ${c.green("cleared", true)}  ${c.white(label.padEnd(8))} ${c.dim(dir)}`);
+    console.log(
+      `${style.check()} ${c.green("cleared", true)}  ${c.white(label.padEnd(8))} ${c.dim(dir)}`,
+    );
   }
 }
 
@@ -190,7 +264,9 @@ export async function guardCommand(args: string[]) {
   if (!command) throw new Error("guard requires the command being wrapped");
   const realArgs = stripGuardOptions(args.slice(1));
   if (Bun.env.SCGUARD_BYPASS === "1") {
-    console.error(`scguard: SCGUARD_BYPASS=1 set; running ${command} unguarded.`);
+    console.error(
+      `scguard: SCGUARD_BYPASS=1 set; running ${command} unguarded.`,
+    );
     await run(command, realArgs);
     return;
   }
@@ -212,17 +288,25 @@ export async function guardCommand(args: string[]) {
 
   const advisory = readActiveAdvisory();
   const action = String(classification.action);
-  const isBareInstall = classification.specs.length === 0 && (action === "install" || action === "i" || action === "ci");
-  const specs = classification.specs.length > 0
-    ? classification.specs
-    : await inferSpecsForPackageOperation(action);
-  console.error(`${c.amber("scguard", true)} ${c.gray(`${classification.action} detected:`)} ${c.white(`${command} ${realArgs.join(" ")}`)}`);
-  console.error(`${c.amber("scguard", true)} ${c.gray("this command can execute lifecycle code from untrusted packages.")}`);
+  const isBareInstall =
+    classification.specs.length === 0 &&
+    (action === "install" || action === "i" || action === "ci");
+  const specs =
+    classification.specs.length > 0
+      ? classification.specs
+      : await inferSpecsForPackageOperation(action);
+  console.error(
+    `${c.amber("scguard", true)} ${c.gray(`${classification.action} detected:`)} ${c.white(`${command} ${realArgs.join(" ")}`)}`,
+  );
+  console.error(
+    `${c.amber("scguard", true)} ${c.gray("this command can execute lifecycle code from untrusted packages.")}`,
+  );
 
   if (isBareInstall) {
     const summary = await scanLockfile(process.cwd(), args.slice(1));
     const allowScanFailures = Bun.env.SCGUARD_ALLOW_SCAN_FAILURES === "1";
-    if (summary.failed.length > 0 && !allowScanFailures) throw lockfileFailedScanError(summary);
+    if (summary.failed.length > 0 && !allowScanFailures)
+      throw lockfileFailedScanError(summary);
     if (summary.blockInstall) throw lockfileBlockingError(summary);
     requireActiveIncidentAcceptance(advisory);
     await run(command, realArgs);
@@ -230,7 +314,9 @@ export async function guardCommand(args: string[]) {
   }
 
   if (specs.length > 0) {
-    console.error(`${c.amber("scguard", true)} ${c.gray("staging analysis required for")} ${c.white(specs.join(", "))}`);
+    console.error(
+      `${c.amber("scguard", true)} ${c.gray("staging analysis required for")} ${c.white(specs.join(", "))}`,
+    );
     const offline = isOfflineMode(args);
     for (const spec of specs) {
       const report = await withSpinner(
@@ -240,15 +326,25 @@ export async function guardCommand(args: string[]) {
       let reportPath = await emitReport(report, false);
       if (!report.summary.installAllowed) {
         if (report.policy?.preset !== "enterprise") {
-          console.error(`${c.amber("scguard", true)} ${c.gray("high-risk findings detected for")} ${c.white(spec)}`);
-          console.error("scguard: type exactly 'bypass' to proceed anyway (not recommended).");
+          console.error(
+            `${c.amber("scguard", true)} ${c.gray("high-risk findings detected for")} ${c.white(spec)}`,
+          );
+          console.error(
+            "scguard: type exactly 'bypass' to proceed anyway (not recommended).",
+          );
           const answer = prompt("> ");
           if (answer !== "bypass") {
-            throw new Error(`Blocked ${spec}: high-risk findings found. See ${reportPath}`);
+            throw new Error(
+              `Blocked ${spec}: high-risk findings found. See ${reportPath}`,
+            );
           }
-          console.error(`${c.amber("scguard", true)} ${c.gray("bypass accepted; proceeding with install.")}`);
+          console.error(
+            `${c.amber("scguard", true)} ${c.gray("bypass accepted; proceeding with install.")}`,
+          );
         } else {
-          throw new Error(`Blocked ${spec}: high-risk findings found. See ${reportPath}`);
+          throw new Error(
+            `Blocked ${spec}: high-risk findings found. See ${reportPath}`,
+          );
         }
       }
       const agentMode = await resolveAgentMode(args.slice(1));
@@ -266,18 +362,33 @@ export async function guardCommand(args: string[]) {
   await run(command, realArgs);
 }
 
-async function guardVsCodeExtension(command: string, args: string[], specs: string[]) {
+async function guardVsCodeExtension(
+  command: string,
+  args: string[],
+  specs: string[],
+) {
   const target = specs[0];
-  console.error(`scguard: VS Code extension install detected: ${command} ${args.join(" ")}`);
-  console.error("scguard: extensions run code inside your editor and can access workspace files.");
-  if (!target) throw new Error("Blocked VS Code extension install: no extension target found.");
+  console.error(
+    `scguard: VS Code extension install detected: ${command} ${args.join(" ")}`,
+  );
+  console.error(
+    "scguard: extensions run code inside your editor and can access workspace files.",
+  );
+  if (!target)
+    throw new Error(
+      "Blocked VS Code extension install: no extension target found.",
+    );
   if (!target.endsWith(".vsix")) {
-    throw new Error("Blocked VS Code extension install by ID. Download the .vsix first, run scan-vsix, then install the reviewed artifact.");
+    throw new Error(
+      "Blocked VS Code extension install by ID. Download the .vsix first, run scan-vsix, then install the reviewed artifact.",
+    );
   }
   const report = await scanVsix(resolve(target));
   let reportPath = await emitReport(report, false);
   if (!report.summary.installAllowed) {
-    throw new Error(`Blocked ${target}: high-risk findings found. See ${reportPath}`);
+    throw new Error(
+      `Blocked ${target}: high-risk findings found. See ${reportPath}`,
+    );
   }
   const agentMode = await resolveAgentMode(args);
   if (agentMode.length > 0) {
@@ -292,13 +403,20 @@ async function guardVsCodeExtension(command: string, args: string[], specs: stri
 
 async function guardNpmStage(command: string, args: string[], specs: string[]) {
   const stageId = specs[0];
-  console.error(`scguard: npm staged publish approval detected: ${command} ${args.join(" ")}`);
-  console.error("scguard: staged packages must be downloaded and analyzed before approval.");
-  if (!stageId) throw new Error("Blocked npm stage approve: no stage id found.");
+  console.error(
+    `scguard: npm staged publish approval detected: ${command} ${args.join(" ")}`,
+  );
+  console.error(
+    "scguard: staged packages must be downloaded and analyzed before approval.",
+  );
+  if (!stageId)
+    throw new Error("Blocked npm stage approve: no stage id found.");
   const report = await scanNpmStage(stageId, { offline: isOfflineMode(args) });
   let reportPath = await emitReport(report, false);
   if (!report.summary.installAllowed) {
-    throw new Error(`Blocked npm stage approve ${stageId}: high-risk findings found. See ${reportPath}`);
+    throw new Error(
+      `Blocked npm stage approve ${stageId}: high-risk findings found. See ${reportPath}`,
+    );
   }
   const agentMode = await resolveAgentMode(args);
   if (agentMode.length > 0) {
@@ -313,7 +431,9 @@ async function guardNpmStage(command: string, args: string[], specs: string[]) {
 
 async function inferSpecsForPackageOperation(action: string) {
   if (action === "update" || action === "upgrade") {
-    throw new Error("Broad package updates are blocked. Run the command with explicit package specs so each update can be staged and analyzed first.");
+    throw new Error(
+      "Broad package updates are blocked. Run the command with explicit package specs so each update can be staged and analyzed first.",
+    );
   }
   return [];
 }
@@ -343,15 +463,22 @@ type SkippedLockfileEntry = {
   reason: "outside-fresh-window" | "baseline-unchanged" | "policy";
 };
 
-export async function scanLockfileCommand(args: string[]): Promise<LockfileScanSummary> {
+export async function scanLockfileCommand(
+  args: string[],
+): Promise<LockfileScanSummary> {
   const cwd = args.find((a) => !a.startsWith("--")) ?? process.cwd();
   return scanLockfile(cwd, args);
 }
 
-export async function scanLockfile(cwd: string, args: string[] = []): Promise<LockfileScanSummary> {
+export async function scanLockfile(
+  cwd: string,
+  args: string[] = [],
+): Promise<LockfileScanSummary> {
   const detected = detectLockfile(cwd);
   if (!detected) {
-    throw new Error(`No lockfile found in ${cwd}. Expected one of: bun.lock, package-lock.json, pnpm-lock.yaml, yarn.lock.`);
+    throw new Error(
+      `No lockfile found in ${cwd}. Expected one of: bun.lock, package-lock.json, pnpm-lock.yaml, yarn.lock.`,
+    );
   }
   const entries = await parseLockfile(detected);
   if (entries.length === 0) {
@@ -362,20 +489,36 @@ export async function scanLockfile(cwd: string, args: string[] = []): Promise<Lo
   const baselinePath = lockfileBaselinePath(cwd);
   const baseline = await readLockfileBaseline(baselinePath);
   const offline = isOfflineMode(args);
-  const concurrency = Math.max(1, Number(Bun.env.SCGUARD_LOCKFILE_CONCURRENCY ?? 8));
+  const concurrency = Math.max(
+    1,
+    Number(Bun.env.SCGUARD_LOCKFILE_CONCURRENCY ?? 8),
+  );
   const ageResults = await collectPackageAges(entries, offline, concurrency);
-  const plan = planLockfileSelection(entries, baseline, config.preset, ageResults);
+  const plan = planLockfileSelection(
+    entries,
+    baseline,
+    config.preset,
+    ageResults,
+  );
 
   console.log(header(`scguard scan-lockfile  ${c.dim(detected.kind)}`));
   console.log(`  ${c.gray("lockfile:")} ${c.white(detected.path)}`);
   console.log(`  ${c.gray("preset:")} ${c.white(config.preset)}`);
   console.log(`  ${c.gray("packages:")} ${c.white(String(entries.length))}`);
-  console.log(`  ${c.gray("selected:")} ${c.white(String(plan.selected.length))}`);
-  console.log(`  ${c.gray("skipped:")} ${c.white(String(plan.skipped.length))}`);
+  console.log(
+    `  ${c.gray("selected:")} ${c.white(String(plan.selected.length))}`,
+  );
+  console.log(
+    `  ${c.gray("skipped:")} ${c.white(String(plan.skipped.length))}`,
+  );
   if (baseline) {
-    console.log(`  ${c.gray("baseline:")} ${c.white(String(baseline.entries.length))} ${c.dim(`saved ${baseline.generatedAt}`)}`);
+    console.log(
+      `  ${c.gray("baseline:")} ${c.white(String(baseline.entries.length))} ${c.dim(`saved ${baseline.generatedAt}`)}`,
+    );
   } else {
-    console.log(`  ${c.gray("baseline:")} ${c.dim("none (full lockfile scan on first bare install)")}`);
+    console.log(
+      `  ${c.gray("baseline:")} ${c.dim("none (full lockfile scan on first bare install)")}`,
+    );
   }
 
   const summary: LockfileScanSummary = {
@@ -399,7 +542,9 @@ export async function scanLockfile(cwd: string, args: string[] = []): Promise<Lo
   const writeProgress = () => {
     if (!process.stderr.isTTY) return;
     const bar = `[${completed}/${total}]`;
-    process.stderr.write(`\r  ${c.amber("scanning", true)} ${c.gray(bar)}     `);
+    process.stderr.write(
+      `\r  ${c.amber("scanning", true)} ${c.gray(bar)}     `,
+    );
   };
 
   async function worker() {
@@ -409,13 +554,24 @@ export async function scanLockfile(cwd: string, args: string[] = []): Promise<Lo
       const selection = plan.selected[i];
       const entry = selection.entry;
       try {
-        const report = await scanNpmLockfileEntry(entry, { offline, packageAge: selection.packageAge });
+        const report = await scanNpmLockfileEntry(entry, {
+          offline,
+          packageAge: selection.packageAge,
+        });
         summary.scanned++;
         const reportPath = await emitReport(report, false);
         if (!report.summary.installAllowed) {
-          summary.blocked.push({ name: entry.name, version: entry.version, reportPath });
+          summary.blocked.push({
+            name: entry.name,
+            version: entry.version,
+            reportPath,
+          });
         } else if (report.summary.risk === "medium") {
-          summary.warnings.push({ name: entry.name, version: entry.version, reportPath });
+          summary.warnings.push({
+            name: entry.name,
+            version: entry.version,
+            reportPath,
+          });
         }
       } catch (err) {
         summary.failed.push({
@@ -431,42 +587,73 @@ export async function scanLockfile(cwd: string, args: string[] = []): Promise<Lo
   }
 
   writeProgress();
-  await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(1, plan.selected.length)) }, () => worker()));
+  await Promise.all(
+    Array.from(
+      { length: Math.min(concurrency, Math.max(1, plan.selected.length)) },
+      () => worker(),
+    ),
+  );
   if (process.stderr.isTTY) process.stderr.write("\n");
 
-  summary.blockInstall = shouldBlockLockfileInstall(config.preset, summary.blocked.length, summary.failed.length);
+  summary.blockInstall = shouldBlockLockfileInstall(
+    config.preset,
+    summary.blocked.length,
+    summary.failed.length,
+  );
   if (summary.failed.length === 0 && !summary.blockInstall) {
-    await writeLockfileBaseline({
-      schemaVersion: 1,
-      generatedAt: new Date().toISOString(),
-      kind: detected.kind,
-      entries,
-    }, baselinePath);
+    await writeLockfileBaseline(
+      {
+        schemaVersion: 1,
+        generatedAt: new Date().toISOString(),
+        kind: detected.kind,
+        entries,
+      },
+      baselinePath,
+    );
     summary.baselineUpdated = true;
   }
 
   console.log("");
-  console.log(`  ${style.check()} ${c.green("scanned ", true)} ${c.white(String(summary.scanned))}/${c.white(String(total))}`);
+  console.log(
+    `  ${style.check()} ${c.green("scanned ", true)} ${c.white(String(summary.scanned))}/${c.white(String(total))}`,
+  );
   if (summary.warnings.length > 0) {
-    console.log(`  ${c.amber("warn    ", true)} ${c.white(String(summary.warnings.length))} ${c.gray("medium-risk packages")}`);
+    console.log(
+      `  ${c.amber("warn    ", true)} ${c.white(String(summary.warnings.length))} ${c.gray("medium-risk packages")}`,
+    );
   }
   if (summary.failed.length > 0) {
-    console.log(`  ${c.amber("skipped ", true)} ${c.white(String(summary.failed.length))} ${c.gray("packages could not be analyzed")}`);
+    console.log(
+      `  ${c.amber("skipped ", true)} ${c.white(String(summary.failed.length))} ${c.gray("packages could not be analyzed")}`,
+    );
     for (const f of summary.failed.slice(0, 5)) {
-      console.log(`    ${c.dim(`- ${f.name}@${f.version}: ${f.error.split("\n")[0]}`)}`);
+      console.log(
+        `    ${c.dim(`- ${f.name}@${f.version}: ${f.error.split("\n")[0]}`)}`,
+      );
     }
-    if (summary.failed.length > 5) console.log(`    ${c.dim(`... and ${summary.failed.length - 5} more`)}`);
+    if (summary.failed.length > 5)
+      console.log(`    ${c.dim(`... and ${summary.failed.length - 5} more`)}`);
   }
   if (summary.blocked.length > 0) {
-    const label = summary.blockInstall ? c.red("blocked ", true) : c.amber("advisory", true);
-    const note = summary.blockInstall ? "high-risk packages" : "high-risk packages (non-blocking)";
-    console.log(`  ${label} ${c.white(String(summary.blocked.length))} ${c.gray(note)}`);
+    const label = summary.blockInstall
+      ? c.red("blocked ", true)
+      : c.amber("advisory", true);
+    const note = summary.blockInstall
+      ? "high-risk packages"
+      : "high-risk packages (non-blocking)";
+    console.log(
+      `  ${label} ${c.white(String(summary.blocked.length))} ${c.gray(note)}`,
+    );
     for (const b of summary.blocked) {
-      console.log(`    ${summary.blockInstall ? c.red("-", true) : c.amber("-", true)} ${c.white(`${b.name}@${b.version}`)} ${c.dim(b.reportPath)}`);
+      console.log(
+        `    ${summary.blockInstall ? c.red("-", true) : c.amber("-", true)} ${c.white(`${b.name}@${b.version}`)} ${c.dim(b.reportPath)}`,
+      );
     }
   }
   if (summary.baselineUpdated) {
-    console.log(`  ${c.green("baseline", true)} ${c.gray("updated for future bare installs")}`);
+    console.log(
+      `  ${c.green("baseline", true)} ${c.gray("updated for future bare installs")}`,
+    );
   }
 
   return summary;
@@ -479,13 +666,20 @@ export function lockfileBaselinePath(cwd: string) {
 function lockfileBlockingError(summary: LockfileScanSummary): Error {
   const lines = [
     `Blocked install: ${summary.blocked.length} high-risk package(s) in ${summary.detected.path}.`,
-    ...summary.blocked.map((b) => `  - ${b.name}@${b.version}  ${b.reportPath}`),
+    ...summary.blocked.map(
+      (b) => `  - ${b.name}@${b.version}  ${b.reportPath}`,
+    ),
     `To bypass for one command (not recommended): SCGUARD_BYPASS=1 <your command>`,
   ];
   return new Error(lines.join("\n"));
 }
 
-export function shouldBlockLockfileInstall(preset: PolicyPreset, blockedCount: number, failedCount = 0, allowScanFailures = Bun.env.SCGUARD_ALLOW_SCAN_FAILURES === "1") {
+export function shouldBlockLockfileInstall(
+  preset: PolicyPreset,
+  blockedCount: number,
+  failedCount = 0,
+  allowScanFailures = Bun.env.SCGUARD_ALLOW_SCAN_FAILURES === "1",
+) {
   if (failedCount > 0 && !allowScanFailures) return true;
   return preset !== "advisory" && blockedCount > 0;
 }
@@ -503,8 +697,13 @@ export function planLockfileSelection(
   for (const entry of entries) {
     const key = `${entry.name}@${entry.version}`;
     const age = packageAges.get(key);
-    const versionAgeHours = age?.status === "checked" ? age.versionAgeHours : undefined;
-    const fresh = age?.status !== "checked" || (typeof versionAgeHours === "number" && versionAgeHours >= 0 && versionAgeHours < windowHours);
+    const versionAgeHours =
+      age?.status === "checked" ? age.versionAgeHours : undefined;
+    const fresh =
+      age?.status !== "checked" ||
+      (typeof versionAgeHours === "number" &&
+        versionAgeHours >= 0 &&
+        versionAgeHours < windowHours);
     const changed = baselineSet ? !baselineSet.has(key) : false;
 
     if (preset === "enterprise") {
@@ -518,13 +717,18 @@ export function planLockfileSelection(
     }
 
     if (preset === "quiet") {
-      if (fresh) selected.push({ entry, reason: "fresh-version", packageAge: age });
+      if (fresh)
+        selected.push({ entry, reason: "fresh-version", packageAge: age });
       else skipped.push({ entry, reason: "outside-fresh-window" });
       continue;
     }
 
     if (changed) {
-      selected.push({ entry, reason: "changed-lockfile-entry", packageAge: age });
+      selected.push({
+        entry,
+        reason: "changed-lockfile-entry",
+        packageAge: age,
+      });
       continue;
     }
 
@@ -533,12 +737,19 @@ export function planLockfileSelection(
       continue;
     }
 
-    skipped.push({ entry, reason: baselineSet ? "baseline-unchanged" : "outside-fresh-window" });
+    skipped.push({
+      entry,
+      reason: baselineSet ? "baseline-unchanged" : "outside-fresh-window",
+    });
   }
   return { selected, skipped };
 }
 
-async function collectPackageAges(entries: LockfileEntry[], offline: boolean, concurrency: number) {
+async function collectPackageAges(
+  entries: LockfileEntry[],
+  offline: boolean,
+  concurrency: number,
+) {
   const results = new Map<string, PackageAgeResult>();
   let cursor = 0;
   async function worker() {
@@ -547,18 +758,30 @@ async function collectPackageAges(entries: LockfileEntry[], offline: boolean, co
       if (i >= entries.length) return;
       const entry = entries[i];
       const key = `${entry.name}@${entry.version}`;
-      results.set(key, await checkPackageAge(entry.name, entry.version, { offline }));
+      results.set(
+        key,
+        await checkPackageAge(entry.name, entry.version, { offline }),
+      );
     }
   }
-  await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(1, entries.length)) }, () => worker()));
+  await Promise.all(
+    Array.from(
+      { length: Math.min(concurrency, Math.max(1, entries.length)) },
+      () => worker(),
+    ),
+  );
   return results;
 }
 
 function lockfileFailedScanError(summary: LockfileScanSummary): Error {
   const lines = [
     `Blocked install: ${summary.failed.length} package(s) in ${summary.detected.path} could not be analyzed.`,
-    ...summary.failed.slice(0, 20).map((f) => `  - ${f.name}@${f.version}  ${f.error.split("\n")[0]}`),
-    summary.failed.length > 20 ? `  ... and ${summary.failed.length - 20} more` : "",
+    ...summary.failed
+      .slice(0, 20)
+      .map((f) => `  - ${f.name}@${f.version}  ${f.error.split("\n")[0]}`),
+    summary.failed.length > 20
+      ? `  ... and ${summary.failed.length - 20} more`
+      : "",
     "To allow this once (not recommended): SCGUARD_ALLOW_SCAN_FAILURES=1 <your command>",
     "To bypass all checks (not recommended): SCGUARD_BYPASS=1 <your command>",
   ].filter(Boolean);
@@ -590,16 +813,39 @@ export function classifyPackageCommand(command: string, args: string[]) {
   const sub = findPackageSubcommand(args);
   // Package manager self-updates are not untrusted package operations.
   if (base === "bun" && sub === "upgrade") {
-    return { packageOperation: false, kind: "npm" as const, action: sub, specs: [] };
+    return {
+      packageOperation: false,
+      kind: "npm" as const,
+      action: sub,
+      specs: [],
+    };
   }
   if (base === "pnpm" && sub === "self-update") {
-    return { packageOperation: false, kind: "npm" as const, action: sub, specs: [] };
+    return {
+      packageOperation: false,
+      kind: "npm" as const,
+      action: sub,
+      specs: [],
+    };
   }
-  const installActions = new Set(["add", "install", "i", "update", "upgrade", "ci"]);
+  const installActions = new Set([
+    "add",
+    "install",
+    "i",
+    "update",
+    "upgrade",
+    "ci",
+  ]);
   const packageManagers = new Set(["bun", "npm", "pnpm", "yarn"]);
-  const packageOperation = packageManagers.has(base) && !!sub && installActions.has(sub);
+  const packageOperation =
+    packageManagers.has(base) && !!sub && installActions.has(sub);
   const specs = packageOperation ? extractSpecs(base, args) : [];
-  return { packageOperation, kind: "npm" as const, action: sub ?? "run", specs };
+  return {
+    packageOperation,
+    kind: "npm" as const,
+    action: sub ?? "run",
+    specs,
+  };
 }
 
 export function findPackageSubcommand(args: string[]): string | undefined {
@@ -725,30 +971,66 @@ export async function configCommand(args: string[]) {
   const explicitPreset = readOption(args, "--preset");
   const explicitSafeResolver = readOption(args, "--safe-resolver");
   const explicitAgent = readOption(args, "--agent");
-  if (explicitPreset !== undefined || explicitSafeResolver !== undefined || explicitAgent !== undefined) {
+  if (
+    explicitPreset !== undefined ||
+    explicitSafeResolver !== undefined ||
+    explicitAgent !== undefined
+  ) {
     const config = await readConfigFile();
-    if (explicitPreset !== undefined) config.preset = normalizePolicyPreset(explicitPreset);
-    if (explicitSafeResolver !== undefined) config.safeResolver = normalizeSafeResolverMode(explicitSafeResolver);
-    if (explicitAgent !== undefined) config.agentReview = normalizeAgentMode(explicitAgent);
+    if (explicitPreset !== undefined)
+      config.preset = normalizePolicyPreset(explicitPreset);
+    if (explicitSafeResolver !== undefined)
+      config.safeResolver = normalizeSafeResolverMode(explicitSafeResolver);
+    if (explicitAgent !== undefined)
+      config.agentReview = normalizeAgentMode(explicitAgent);
     await writeConfig(config);
-    console.log(`${style.check()} ${c.green("saved", true)} ${c.gray("policy:")} ${c.amber(config.preset, true)} ${c.gray("/")} ${c.amber(config.safeResolver, true)} ${c.gray("agent:")} ${c.amber(config.agentReview, true)}`);
+    console.log(
+      `${style.check()} ${c.green("saved", true)} ${c.gray("policy:")} ${c.amber(config.preset, true)} ${c.gray("/")} ${c.amber(config.safeResolver, true)} ${c.gray("agent:")} ${c.amber(config.agentReview, true)}`,
+    );
     return;
   }
   const config = await readConfigFile();
   config.preset = await presetConfigTui(config.preset);
   config.agentReview = await agentConfigTui(config.agentReview);
   await writeConfig(config);
-  console.log(`${style.check()} ${c.green("saved", true)} ${c.gray("policy:")} ${c.amber(config.preset, true)} ${c.gray("/")} ${c.amber(config.safeResolver, true)} ${c.gray("agent:")} ${c.amber(config.agentReview, true)}`);
+  console.log(
+    `${style.check()} ${c.green("saved", true)} ${c.gray("policy:")} ${c.amber(config.preset, true)} ${c.gray("/")} ${c.amber(config.safeResolver, true)} ${c.gray("agent:")} ${c.amber(config.agentReview, true)}`,
+  );
 }
 
 async function presetConfigTui(current: PolicyPreset): Promise<PolicyPreset> {
-  const options: Array<{ value: PolicyPreset; label: string; detail: string }> = [
-    { value: "default", label: "default", detail: "Fresh versions under 7 days plus packages changed from the prior baseline." },
-    { value: "quiet", label: "quiet", detail: "Only versions published in the last 24 hours." },
-    { value: "strict-ci", label: "strict-ci", detail: "Changed lockfile entries plus fresh/risky versions under 30 days." },
-    { value: "enterprise", label: "enterprise", detail: "Broad lockfile coverage with online intelligence when available." },
-    { value: "advisory", label: "advisory", detail: "Same scope as default, but findings never block a bare install." },
-  ];
+  const options: Array<{ value: PolicyPreset; label: string; detail: string }> =
+    [
+      {
+        value: "default",
+        label: "default",
+        detail:
+          "Fresh versions under 7 days plus packages changed from the prior baseline.",
+      },
+      {
+        value: "quiet",
+        label: "quiet",
+        detail: "Only versions published in the last 24 hours.",
+      },
+      {
+        value: "strict-ci",
+        label: "strict-ci",
+        detail:
+          "Changed lockfile entries plus fresh/risky versions under 30 days.",
+      },
+      {
+        value: "enterprise",
+        label: "enterprise",
+        detail:
+          "Broad lockfile coverage with online intelligence when available.",
+      },
+      {
+        value: "advisory",
+        label: "advisory",
+        detail:
+          "Same scope as default, but findings never block a bare install.",
+      },
+    ];
   renderPresetConfigMenu(options, current);
   const answer = prompt("Select 1-5, or press Enter to keep current:");
   if (!answer?.trim()) return current;
@@ -761,10 +1043,26 @@ async function presetConfigTui(current: PolicyPreset): Promise<PolicyPreset> {
 
 async function agentConfigTui(current: AgentMode): Promise<AgentMode> {
   const options: Array<{ value: AgentMode; label: string; detail: string }> = [
-    { value: "none", label: "No agent review", detail: "Only deterministic local analysis runs before install." },
-    { value: "codex", label: "Codex", detail: "Run codex exec in read-only mode for every scan/install gate." },
-    { value: "pi", label: "PI", detail: "Run pi -p with no tools for every scan/install gate." },
-    { value: "both", label: "Codex + PI", detail: "Require both agents to approve before install continues." },
+    {
+      value: "none",
+      label: "No agent review",
+      detail: "Only deterministic local analysis runs before install.",
+    },
+    {
+      value: "codex",
+      label: "Codex",
+      detail: "Run codex exec in read-only mode for every scan/install gate.",
+    },
+    {
+      value: "pi",
+      label: "PI",
+      detail: "Run pi -p with no tools for every scan/install gate.",
+    },
+    {
+      value: "both",
+      label: "Codex + PI",
+      detail: "Require both agents to approve before install continues.",
+    },
   ];
   renderAgentConfigMenu(options, current);
   const answer = prompt("Select 1-4, or press Enter to keep current:");
@@ -776,14 +1074,21 @@ async function agentConfigTui(current: AgentMode): Promise<AgentMode> {
   return options[index].value;
 }
 
-function renderPresetConfigMenu(options: Array<{ value: PolicyPreset; label: string; detail: string }>, current: PolicyPreset) {
+function renderPresetConfigMenu(
+  options: Array<{ value: PolicyPreset; label: string; detail: string }>,
+  current: PolicyPreset,
+) {
   process.stdout.write(`${header("Supply Chain Guard Config")}\n`);
-  process.stdout.write(`${c.gray("Choose the default lockfile policy preset for bare installs and scans.")}\n`);
+  process.stdout.write(
+    `${c.gray("Choose the default lockfile policy preset for bare installs and scans.")}\n`,
+  );
   process.stdout.write(`${c.dim("current:")} ${c.amber(current, true)}\n\n`);
   options.forEach((option, optionIndex) => {
     const active = option.value === current;
     const pointer = active ? c.amber("\u276f", true) : c.dim(" ");
-    const num = active ? c.amber(String(optionIndex + 1), true) : c.gray(String(optionIndex + 1));
+    const num = active
+      ? c.amber(String(optionIndex + 1), true)
+      : c.gray(String(optionIndex + 1));
     const label = active ? c.amber(option.label, true) : c.white(option.label);
     process.stdout.write(`${pointer} ${num}. ${label}\n`);
     process.stdout.write(`   ${c.dim(option.detail)}\n`);
@@ -791,14 +1096,21 @@ function renderPresetConfigMenu(options: Array<{ value: PolicyPreset; label: str
   process.stdout.write("\n");
 }
 
-function renderAgentConfigMenu(options: Array<{ value: AgentMode; label: string; detail: string }>, current: AgentMode) {
+function renderAgentConfigMenu(
+  options: Array<{ value: AgentMode; label: string; detail: string }>,
+  current: AgentMode,
+) {
   process.stdout.write(`${header("Supply Chain Guard Config")}\n`);
-  process.stdout.write(`${c.gray("Choose default agent review for scans and install gates.")}\n`);
+  process.stdout.write(
+    `${c.gray("Choose default agent review for scans and install gates.")}\n`,
+  );
   process.stdout.write(`${c.dim("current:")} ${c.amber(current, true)}\n\n`);
   options.forEach((option, optionIndex) => {
     const active = option.value === current;
     const pointer = active ? c.amber("\u276f", true) : c.dim(" ");
-    const num = active ? c.amber(String(optionIndex + 1), true) : c.gray(String(optionIndex + 1));
+    const num = active
+      ? c.amber(String(optionIndex + 1), true)
+      : c.gray(String(optionIndex + 1));
     const label = active ? c.amber(option.label, true) : c.white(option.label);
     process.stdout.write(`${pointer} ${num}. ${label}\n`);
     process.stdout.write(`   ${c.dim(option.detail)}\n`);
@@ -810,7 +1122,10 @@ export async function selfTest() {
   const { analyzeDirectory } = await import("./analysis");
   const { ensureLargeBinFixture } = await import("./fixtures-support");
   await ensureLargeBinFixture();
-  const cases: Array<{ dir: string; expect: "low" | "medium" | "high" | "medium-or-high" }> = [
+  const cases: Array<{
+    dir: string;
+    expect: "low" | "medium" | "high" | "medium-or-high";
+  }> = [
     { dir: "benign-package", expect: "low" },
     { dir: "malicious-postinstall", expect: "high" },
     { dir: "credential-exfil", expect: "high" },
@@ -819,13 +1134,23 @@ export async function selfTest() {
   ];
   for (const tc of cases) {
     const fixturePath = join(ROOT, "src", "fixtures", tc.dir);
-    const report = await analyzeDirectory(`fixture:${tc.dir}`, "npm", fixturePath, "local-fixture");
-    const ok = tc.expect === "medium-or-high"
-      ? report.summary.risk === "medium" || report.summary.risk === "high"
-      : report.summary.risk === tc.expect;
+    const report = await analyzeDirectory(
+      `fixture:${tc.dir}`,
+      "npm",
+      fixturePath,
+      "local-fixture",
+    );
+    const ok =
+      tc.expect === "medium-or-high"
+        ? report.summary.risk === "medium" || report.summary.risk === "high"
+        : report.summary.risk === tc.expect;
     if (!ok) {
-      throw new Error(`self-test: fixture ${tc.dir} expected risk ${tc.expect}, got ${report.summary.risk}`);
+      throw new Error(
+        `self-test: fixture ${tc.dir} expected risk ${tc.expect}, got ${report.summary.risk}`,
+      );
     }
   }
-  console.log(`${style.ok()}  ${c.gray(`self-test passed (${cases.length} fixtures)`)}`);
+  console.log(
+    `${style.ok()}  ${c.gray(`self-test passed (${cases.length} fixtures)`)}`,
+  );
 }

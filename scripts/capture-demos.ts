@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
+import { spawn } from "node:child_process";
 /**
  * Capture real scguard CLI output for site demos and README screenshots.
  */
-import { mkdir, rm, writeFile, copyFile, readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { copyFile, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { spawn } from "node:child_process";
+import { join } from "node:path";
 import { ansiLinesToHtml } from "./ansi-html";
 
 const ROOT = join(import.meta.dir, "..");
@@ -52,10 +52,17 @@ function sanitizeForDemo(text: string): string {
     if (/It can miss malicious packages/i.test(plain)) return false;
     return true;
   });
-  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return lines
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
-function normalizeOutput(text: string, ws: string, reportLabel: string): string {
+function normalizeOutput(
+  text: string,
+  ws: string,
+  reportLabel: string,
+): string {
   const displayWs = "./demo";
   return sanitizeForDemo(
     text
@@ -96,8 +103,15 @@ function runCmd(
   });
 }
 
-async function scguard(args: string[], cwd: string, extraEnv?: Record<string, string>): Promise<string> {
-  const { stdout, stderr } = await runCmd("bun", ["run", CLI, ...args], { cwd, env: extraEnv });
+async function scguard(
+  args: string[],
+  cwd: string,
+  extraEnv?: Record<string, string>,
+): Promise<string> {
+  const { stdout, stderr } = await runCmd("bun", ["run", CLI, ...args], {
+    cwd,
+    env: extraEnv,
+  });
   return stdout + (stderr ? (stdout ? "\n" : "") + stderr : "");
 }
 
@@ -109,7 +123,9 @@ async function ensureDemoVsix(): Promise<void> {
     `cd "${DEMO_EXT}" && zip -qr "${DEMO_VSIX}" extension extension.vsixmanifest`,
   ]);
   if (zip.code !== 0) {
-    throw new Error(`Failed to build demo VSIX (exit ${zip.code}): ${zip.stderr || zip.stdout}`);
+    throw new Error(
+      `Failed to build demo VSIX (exit ${zip.code}): ${zip.stderr || zip.stdout}`,
+    );
   }
 }
 
@@ -119,7 +135,11 @@ async function makeWorkspace(): Promise<string> {
   await mkdir(ws, { recursive: true });
   await writeFile(
     join(ws, "package.json"),
-    JSON.stringify({ name: "scguard-demo", private: true, version: "0.0.0" }, null, 2),
+    JSON.stringify(
+      { name: "scguard-demo", private: true, version: "0.0.0" },
+      null,
+      2,
+    ),
   );
   return ws;
 }
@@ -150,11 +170,17 @@ const demos: DemoSpec[] = [
     command: "scguard install is-number@7.0.0",
     reportLabel: "is-number@7.0.0-report",
     run: async (ws) => {
-      const out = await scguard(["install", "is-number@7.0.0", "--pm", "npm"], ws, {
-        NODE_NO_WARNINGS: "1",
-      });
+      const out = await scguard(
+        ["install", "is-number@7.0.0", "--pm", "npm"],
+        ws,
+        {
+          NODE_NO_WARNINGS: "1",
+        },
+      );
       const lines = out.split("\n");
-      const end = lines.findIndex((l) => stripAnsi(l).includes("found 0 vulnerabilities"));
+      const end = lines.findIndex((l) =>
+        stripAnsi(l).includes("found 0 vulnerabilities"),
+      );
       if (end >= 0) return lines.slice(0, end + 1).join("\n");
       return out;
     },
@@ -194,10 +220,16 @@ const demos: DemoSpec[] = [
         )
         .map((f) => `  ${f}`)
         .join("\n");
-      const sample = files.find((f) => f.endsWith(".md") && !f.includes("prompt"));
+      const sample = files.find(
+        (f) => f.endsWith(".md") && !f.includes("prompt"),
+      );
       let preview = "";
       if (sample) {
-        const { stdout } = await runCmd("head", ["-n", "12", join(reports, sample)], { cwd: ws });
+        const { stdout } = await runCmd(
+          "head",
+          ["-n", "12", join(reports, sample)],
+          { cwd: ws },
+        );
         preview = `\n$ head -12 .scguard/reports/chalk@5.4.1-report.md\n${stdout}`;
       }
       return `${listing}${preview}`;
@@ -226,15 +258,25 @@ async function main() {
         lines: ansiLinesToHtml(full),
         plain: full,
       };
-      await writeFile(join(SITE_DATA, `${demo.slug}.json`), JSON.stringify(payload, null, 2));
+      await writeFile(
+        join(SITE_DATA, `${demo.slug}.json`),
+        JSON.stringify(payload, null, 2),
+      );
       console.log(`  ✓ ${demo.slug}`);
     } finally {
       await rm(ws, { recursive: true, force: true });
     }
   }
 
-  const manifest = demos.map((d) => ({ slug: d.slug, title: d.title, command: d.command }));
-  await writeFile(join(SITE_DATA, "manifest.json"), JSON.stringify(manifest, null, 2));
+  const manifest = demos.map((d) => ({
+    slug: d.slug,
+    title: d.title,
+    command: d.command,
+  }));
+  await writeFile(
+    join(SITE_DATA, "manifest.json"),
+    JSON.stringify(manifest, null, 2),
+  );
   console.log("\nDone. Run: node scripts/generate-demo-screenshots.mjs");
 }
 

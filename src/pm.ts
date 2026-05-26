@@ -11,7 +11,9 @@ export type DetectedPm = {
 
 const PM_VALUES: PackageManager[] = ["bun", "npm", "pnpm", "yarn"];
 
-export function isPackageManager(value: string | undefined): value is PackageManager {
+export function isPackageManager(
+  value: string | undefined,
+): value is PackageManager {
   return !!value && PM_VALUES.includes(value as PackageManager);
 }
 
@@ -32,16 +34,24 @@ export function readPmFlag(args: string[]): string | undefined {
  * Detect which package manager a project uses.
  * Order: explicit `--pm` flag > lockfile > package.json `packageManager` > default `bun`.
  */
-export function detectPackageManager(rootDir: string, args: string[] = []): DetectedPm {
+export function detectPackageManager(
+  rootDir: string,
+  args: string[] = [],
+): DetectedPm {
   const flag = readPmFlag(args);
   if (flag) {
     if (!isPackageManager(flag)) {
-      throw new Error(`Unknown --pm value: ${flag}. Expected one of: ${PM_VALUES.join(", ")}`);
+      throw new Error(
+        `Unknown --pm value: ${flag}. Expected one of: ${PM_VALUES.join(", ")}`,
+      );
     }
     return { pm: flag, source: "flag", detail: `--pm ${flag}` };
   }
 
-  if (existsSync(join(rootDir, "bun.lock")) || existsSync(join(rootDir, "bun.lockb"))) {
+  if (
+    existsSync(join(rootDir, "bun.lock")) ||
+    existsSync(join(rootDir, "bun.lockb"))
+  ) {
     return { pm: "bun", source: "lockfile", detail: "bun.lock(b)" };
   }
   if (existsSync(join(rootDir, "pnpm-lock.yaml"))) {
@@ -62,7 +72,11 @@ export function detectPackageManager(rootDir: string, args: string[] = []): Dete
       if (typeof pkg.packageManager === "string") {
         const name = pkg.packageManager.split("@")[0];
         if (isPackageManager(name)) {
-          return { pm: name, source: "packageManager", detail: `package.json packageManager=${pkg.packageManager}` };
+          return {
+            pm: name,
+            source: "packageManager",
+            detail: `package.json packageManager=${pkg.packageManager}`,
+          };
         }
       }
     } catch {
@@ -70,25 +84,45 @@ export function detectPackageManager(rootDir: string, args: string[] = []): Dete
     }
   }
 
-  return { pm: "bun", source: "default", detail: "no lockfile or packageManager field detected" };
+  return {
+    pm: "bun",
+    source: "default",
+    detail: "no lockfile or packageManager field detected",
+  };
 }
 
 /**
  * Build the install command for a package manager.
  * Returns `{ cmd, args }` suitable for `Bun.spawn` / `run()`.
  */
-export function buildInstallCommand(pm: PackageManager, specs: string[], opts: { dev?: boolean } = {}): {
+export function buildInstallCommand(
+  pm: PackageManager,
+  specs: string[],
+  opts: { dev?: boolean } = {},
+): {
   cmd: string;
   args: string[];
 } {
   switch (pm) {
     case "bun":
-      return { cmd: "bun", args: ["add", ...(opts.dev ? ["--dev"] : []), ...specs] };
+      return {
+        cmd: "bun",
+        args: ["add", ...(opts.dev ? ["--dev"] : []), ...specs],
+      };
     case "npm":
-      return { cmd: "npm", args: ["install", ...(opts.dev ? ["--save-dev"] : []), ...specs] };
+      return {
+        cmd: "npm",
+        args: ["install", ...(opts.dev ? ["--save-dev"] : []), ...specs],
+      };
     case "pnpm":
-      return { cmd: "pnpm", args: ["add", ...(opts.dev ? ["--save-dev"] : []), ...specs] };
+      return {
+        cmd: "pnpm",
+        args: ["add", ...(opts.dev ? ["--save-dev"] : []), ...specs],
+      };
     case "yarn":
-      return { cmd: "yarn", args: ["add", ...(opts.dev ? ["--dev"] : []), ...specs] };
+      return {
+        cmd: "yarn",
+        args: ["add", ...(opts.dev ? ["--dev"] : []), ...specs],
+      };
   }
 }

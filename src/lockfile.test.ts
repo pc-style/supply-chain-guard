@@ -7,9 +7,16 @@ describe("parseNpm (lockfileVersion 3)", () => {
       lockfileVersion: 3,
       packages: {
         "": { name: "myapp", version: "1.0.0" },
-        "node_modules/lodash": { version: "4.17.21", resolved: "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz" },
+        "node_modules/lodash": {
+          version: "4.17.21",
+          resolved: "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz",
+        },
         "node_modules/@scope/foo": { version: "2.0.0" },
-        "node_modules/local-link": { resolved: "../local", link: true, version: "0.0.0" },
+        "node_modules/local-link": {
+          resolved: "../local",
+          link: true,
+          version: "0.0.0",
+        },
         "node_modules/react": { version: "18.3.1" },
       },
     });

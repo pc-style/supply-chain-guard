@@ -1,8 +1,8 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
-  checkSocket,
   checkOsv,
   checkPackageAge,
+  checkSocket,
   checkTyposquat,
   computeCvssV3BaseScore,
   levenshtein,
@@ -15,29 +15,41 @@ import {
 describe("computeCvssV3BaseScore", () => {
   test("CVE-2017-5638 vector → 10.0 (critical)", () => {
     // CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H — published score 10.0
-    expect(computeCvssV3BaseScore("CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H")).toBe(10);
+    expect(
+      computeCvssV3BaseScore("CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H"),
+    ).toBe(10);
   });
   test("CVSS:3.1 high vector (~7.5)", () => {
     // CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N — published score 7.5
-    expect(computeCvssV3BaseScore("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N")).toBe(7.5);
+    expect(
+      computeCvssV3BaseScore("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"),
+    ).toBe(7.5);
   });
   test("CVSS:3.1 medium vector (~4.3)", () => {
     // CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:N/A:N — published score 4.3
-    expect(computeCvssV3BaseScore("CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:N/A:N")).toBe(4.3);
+    expect(
+      computeCvssV3BaseScore("CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:N/A:N"),
+    ).toBe(4.3);
   });
   test("zero-impact vector → 0", () => {
-    expect(computeCvssV3BaseScore("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N")).toBe(0);
+    expect(
+      computeCvssV3BaseScore("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N"),
+    ).toBe(0);
   });
   test("non-CVSS string → undefined", () => {
     expect(computeCvssV3BaseScore("not a vector")).toBeUndefined();
-    expect(computeCvssV3BaseScore("CVSS:2.0/AV:N/AC:L/Au:N/C:N/I:N/A:C")).toBeUndefined();
+    expect(
+      computeCvssV3BaseScore("CVSS:2.0/AV:N/AC:L/Au:N/C:N/I:N/A:C"),
+    ).toBeUndefined();
   });
   test("missing metric → undefined", () => {
     expect(computeCvssV3BaseScore("CVSS:3.1/AV:N/AC:L")).toBeUndefined();
   });
 
   test("invalid scope metric → undefined", () => {
-    expect(computeCvssV3BaseScore("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:X/C:H/I:H/A:H")).toBeUndefined();
+    expect(
+      computeCvssV3BaseScore("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:X/C:H/I:H/A:H"),
+    ).toBeUndefined();
   });
 });
 
@@ -143,6 +155,7 @@ describe("offline mode shortcircuits", () => {
 // top-npm-packages.json — no duplicates
 // ---------------------------------------------------------------------------
 import topNpmPackages from "./data/top-npm-packages.json";
+
 describe("top-npm-packages.json", () => {
   test("contains no duplicates", () => {
     const list = topNpmPackages as string[];
@@ -166,7 +179,9 @@ describe("verifyNpmSignatures input validation", () => {
   });
 
   test("empty signatures array → no-signature status", async () => {
-    const r = await verifyNpmSignatures("anything", "1.0.0", { signatures: [] });
+    const r = await verifyNpmSignatures("anything", "1.0.0", {
+      signatures: [],
+    });
     expect(r.status).toBe("no-signature");
   });
 });

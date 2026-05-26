@@ -4,7 +4,7 @@
 
 ### Overview
 
-Supply Chain Guard is a zero-dependency Bun+TypeScript CLI that inspects npm packages and VS Code extensions before installation. There is no backend, no database, and no Docker dependency.
+Supply Chain Guard is a Bun+TypeScript CLI that inspects npm packages and VS Code extensions before installation. The published CLI has no production npm dependencies; this repo uses dev-only packages (Biome, Playwright for demos, `@types/bun`) for development and testing. There is no backend, no database, and no Docker dependency.
 
 ### Runtime
 
@@ -18,13 +18,14 @@ All commands are documented in `package.json` scripts:
 | Task | Command |
 |------|---------|
 | Install deps | `bun install` |
+| Lint / format | `bun run lint` / `bun run format` |
 | Type check | `bun run typecheck` |
 | Unit tests | `bun run test` |
 | Full CI check | `bun run check` |
 | Run CLI | `bun run scguard -- <args>` |
 | Build binary | `bun run build` |
 
-`bun run check` is the single pre-PR gate — it runs typecheck, help render, self-test on fixtures, and the full unit test suite.
+`bun run check` is the single pre-PR gate — it runs Biome, typecheck, help render, self-test on fixtures, and the full unit test suite. Bun `1.3.14` is pinned in `package.json` `engines` and CI.
 
 ### Gotchas
 

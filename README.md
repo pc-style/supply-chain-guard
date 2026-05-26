@@ -205,9 +205,22 @@ The takedown flow is intentionally simple in this first version:
 
 ## Development
 
+Clone the repo and run the pre-PR gate locally:
+
 ```sh
+git clone https://github.com/pc-style/supply-chain-guard.git
+cd supply-chain-guard
 bun install
 bun run check
 ```
+
+Run the CLI from source without a global install:
+
+```sh
+bun run scguard -- --help
+bun run scguard -- review left-pad --offline
+```
+
+Use `--offline` for local reviews when you want to skip registry and signature checks. See [CONTRIBUTING.md](./CONTRIBUTING.md) and [AGENTS.md](./AGENTS.md) for the full contributor and agent workflow.
 
 Generated cache, reports, tarballs, `node_modules`, and env files are ignored by git.

@@ -1,28 +1,27 @@
-import { mkdtemp, readdir, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { mkdtemp, readdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
-import {
-  CACHE_DIR,
-  WORK_DIR,
-  commandExists,
-  debug,
-  objectValue,
-  readConfig,
-  readActiveAdvisory,
-  readJson,
-  run,
-  walk,
-} from "./core";
 import type {
   Finding,
+  PackageAgeResult,
   PolicyPreset,
   Report,
   ReportPolicy,
-  PackageAgeResult,
   Risk,
-  SafeResolverMode,
   SafeResolverSuggestion,
   ScanReason,
+} from "./core";
+import {
+  CACHE_DIR,
+  commandExists,
+  debug,
+  objectValue,
+  readActiveAdvisory,
+  readConfig,
+  readJson,
+  run,
+  WORK_DIR,
+  walk,
 } from "./core";
 import {
   checkOsv,
@@ -32,25 +31,85 @@ import {
   verifyNpmSignatures,
 } from "./integrations";
 
-const INSTALL_SCRIPTS = new Set(["preinstall", "install", "postinstall", "prepare"]);
+const INSTALL_SCRIPTS = new Set([
+  "preinstall",
+  "install",
+  "postinstall",
+  "prepare",
+]);
 
 // Patterns checked in ALL contexts (scripts + files).
 const PATTERNS_ALL: Array<[RegExp, string, Risk, string]> = [
-  [/curl\s+[^|]+\|\s*(sh|bash)/i, "pipe-to-shell", "high", "Downloads and executes remote shell code."],
-  [/wget\s+[^|]+\|\s*(sh|bash)/i, "pipe-to-shell", "high", "Downloads and executes remote shell code."],
-  [/(npmrc|\.ssh\/|id_rsa|AWS_SECRET|GITHUB_TOKEN|NPM_TOKEN)/i, "credential-access", "high", "References credentials or sensitive key paths."],
-  [/(base64\s+-d|Buffer\.from\([^)]*base64)/i, "encoded-payload", "medium", "Decodes base64 payloads."],
-  [/\bdns\.(?:resolve|resolve4|resolve6|lookup|setServers)\s*\(/i, "dns-exfiltration", "high", "Uses DNS resolution APIs that are commonly abused for data exfiltration."],
-  [/fs\.(?:readFile|readFileSync)\s*\([\s\S]{0,240}?(fetch|axios|https?\.(?:request|get)|XMLHttpRequest)/i, "read-then-send", "high", "Reads local files then sends data over the network."],
-  [/(os\.homedir\(\)|~\/\.npmrc|\.npmrc|\.ssh\/id_rsa)/i, "sensitive-path-access", "high", "References sensitive local credential paths."],
-  [/process\.env\s*(?:\[[^\]]+\]|\.[A-Z0-9_]+)/i, "env-secret-access", "medium", "Accesses environment variables that may contain credentials."],
+  [
+    /curl\s+[^|]+\|\s*(sh|bash)/i,
+    "pipe-to-shell",
+    "high",
+    "Downloads and executes remote shell code.",
+  ],
+  [
+    /wget\s+[^|]+\|\s*(sh|bash)/i,
+    "pipe-to-shell",
+    "high",
+    "Downloads and executes remote shell code.",
+  ],
+  [
+    /(npmrc|\.ssh\/|id_rsa|AWS_SECRET|GITHUB_TOKEN|NPM_TOKEN)/i,
+    "credential-access",
+    "high",
+    "References credentials or sensitive key paths.",
+  ],
+  [
+    /(base64\s+-d|Buffer\.from\([^)]*base64)/i,
+    "encoded-payload",
+    "medium",
+    "Decodes base64 payloads.",
+  ],
+  [
+    /\bdns\.(?:resolve|resolve4|resolve6|lookup|setServers)\s*\(/i,
+    "dns-exfiltration",
+    "high",
+    "Uses DNS resolution APIs that are commonly abused for data exfiltration.",
+  ],
+  [
+    /fs\.(?:readFile|readFileSync)\s*\([\s\S]{0,240}?(fetch|axios|https?\.(?:request|get)|XMLHttpRequest)/i,
+    "read-then-send",
+    "high",
+    "Reads local files then sends data over the network.",
+  ],
+  [
+    /(os\.homedir\(\)|~\/\.npmrc|\.npmrc|\.ssh\/id_rsa)/i,
+    "sensitive-path-access",
+    "high",
+    "References sensitive local credential paths.",
+  ],
+  [
+    /process\.env\s*(?:\[[^\]]+\]|\.[A-Z0-9_]+)/i,
+    "env-secret-access",
+    "medium",
+    "Accesses environment variables that may contain credentials.",
+  ],
 ];
 
 // Patterns only checked when the scope is a lifecycle script (not generic source files).
 const PATTERNS_SCRIPTS_ONLY: Array<[RegExp, string, Risk, string]> = [
-  [/(require\(["']child_process["']\)|from ["']node:child_process["']|execSync\(|spawnSync\(|eval\(|new Function\()/, "dynamic-execution", "medium", "Uses dynamic process or code execution."],
-  [/(https?:\/\/|fetch\(|XMLHttpRequest)/i, "network-access", "medium", "Performs network access in a lifecycle script."],
-  [/process\.env/i, "env-access", "medium", "Reads process environment variables in a lifecycle script."],
+  [
+    /(require\(["']child_process["']\)|from ["']node:child_process["']|execSync\(|spawnSync\(|eval\(|new Function\()/,
+    "dynamic-execution",
+    "medium",
+    "Uses dynamic process or code execution.",
+  ],
+  [
+    /(https?:\/\/|fetch\(|XMLHttpRequest)/i,
+    "network-access",
+    "medium",
+    "Performs network access in a lifecycle script.",
+  ],
+  [
+    /process\.env/i,
+    "env-access",
+    "medium",
+    "Reads process environment variables in a lifecycle script.",
+  ],
 ];
 
 export type ScanNpmOptions = {
@@ -62,7 +121,10 @@ export type ScanNpmOptions = {
   pinnedIntegrity?: string;
 };
 
-export async function scanNpm(spec: string, options: ScanNpmOptions = {}): Promise<Report> {
+export async function scanNpm(
+  spec: string,
+  options: ScanNpmOptions = {},
+): Promise<Report> {
   const parsedSpec = parsePackageSpec(spec);
   const requestedName = parsedSpec.name;
   const requestedVersion = parsedSpec.version;
@@ -76,14 +138,21 @@ export async function scanNpm(spec: string, options: ScanNpmOptions = {}): Promi
   const resolvedName = String(meta.name);
   const version = String(meta.version);
   const tarball = options.pinnedTarball ?? String(meta.dist.tarball);
-  if (options.pinnedTarball && !isAllowedPinnedTarballUrl(options.pinnedTarball)) {
-    throw new Error(`Refusing to download lockfile artifact from untrusted URL: ${options.pinnedTarball}`);
+  if (
+    options.pinnedTarball &&
+    !isAllowedPinnedTarballUrl(options.pinnedTarball)
+  ) {
+    throw new Error(
+      `Refusing to download lockfile artifact from untrusted URL: ${options.pinnedTarball}`,
+    );
   }
   return scanNpmArtifact({
     name: resolvedName,
     version,
     tarball,
-    integrity: options.pinnedIntegrity ?? (meta.dist?.integrity ? String(meta.dist.integrity) : undefined),
+    integrity:
+      options.pinnedIntegrity ??
+      (meta.dist?.integrity ? String(meta.dist.integrity) : undefined),
     dist: meta.dist ?? {},
     requestedName,
     requestedVersion,
@@ -94,7 +163,12 @@ export async function scanNpm(spec: string, options: ScanNpmOptions = {}): Promi
 }
 
 export async function scanNpmLockfileEntry(
-  entry: { name: string; version: string; resolved?: string; integrity?: string },
+  entry: {
+    name: string;
+    version: string;
+    resolved?: string;
+    integrity?: string;
+  },
   options: { offline?: boolean; packageAge?: PackageAgeResult } = {},
 ): Promise<Report> {
   const spec = `${entry.name}@${entry.version}`;
@@ -106,7 +180,10 @@ export async function scanNpmLockfileEntry(
       pinnedIntegrity: entry.integrity,
     });
   }
-  return scanNpm(spec, { offline: options.offline, packageAge: options.packageAge });
+  return scanNpm(spec, {
+    offline: options.offline,
+    packageAge: options.packageAge,
+  });
 }
 
 async function scanNpmArtifact(context: {
@@ -121,7 +198,18 @@ async function scanNpmArtifact(context: {
   packageAge?: PackageAgeResult;
   scanReason: ScanReason;
 }): Promise<Report> {
-  const { name, version, tarball, integrity, dist, requestedName, requestedVersion, offline, packageAge, scanReason } = context;
+  const {
+    name,
+    version,
+    tarball,
+    integrity,
+    dist,
+    requestedName,
+    requestedVersion,
+    offline,
+    packageAge,
+    scanReason,
+  } = context;
   const safeName = name.replaceAll("/", "_").replaceAll("@", "");
   const artifactPath = join(CACHE_DIR, `${safeName}-${version}.tgz`);
   const offlineOpt = { offline };
@@ -146,25 +234,36 @@ async function scanNpmArtifact(context: {
   debug(`analyzing ${packageDir}`);
   const [socket, osv, resolvedPackageAge, npmSignature] = await intelPromise;
   const config = await readConfig();
-  const reportPolicy = await buildReportPolicy({
-    preset: config.preset,
-    safeResolver: config.safeResolver,
-    scanReason,
-  }, {
-    requestedVersion,
-    resolvedVersion: version,
-    packageAge: resolvedPackageAge,
-    name: requestedName,
-    offline,
-  });
+  const reportPolicy = await buildReportPolicy(
+    {
+      preset: config.preset,
+      safeResolver: config.safeResolver,
+      scanReason,
+    },
+    {
+      requestedVersion,
+      resolvedVersion: version,
+      packageAge: resolvedPackageAge,
+      name: requestedName,
+      offline,
+    },
+  );
   const typosquat = checkTyposquat(name);
-  const report = await analyzeDirectory(`${name}@${version}`, "npm", packageDir, tarball, artifactPath, {
-    socket,
-    osv,
-    packageAge: resolvedPackageAge,
-    npmSignature,
-    typosquat,
-  }, reportPolicy);
+  const report = await analyzeDirectory(
+    `${name}@${version}`,
+    "npm",
+    packageDir,
+    tarball,
+    artifactPath,
+    {
+      socket,
+      osv,
+      packageAge: resolvedPackageAge,
+      npmSignature,
+      typosquat,
+    },
+    reportPolicy,
+  );
   if (integrity) {
     const ok = await verifyIntegrity(artifactPath, integrity);
     if (!ok) {
@@ -173,7 +272,8 @@ async function scanNpmArtifact(context: {
         title: "Tarball integrity mismatch",
         severity: "high",
         evidence: `Expected integrity: ${integrity}; downloaded file does not match`,
-        recommendation: "Do not install. The downloaded tarball differs from the lockfile/registry digest — possible tampering.",
+        recommendation:
+          "Do not install. The downloaded tarball differs from the lockfile/registry digest — possible tampering.",
       });
       report.summary.risk = "high";
       report.summary.installAllowed = false;
@@ -188,9 +288,11 @@ function isAllowedPinnedTarballUrl(url: string): boolean {
     const parsed = new URL(url);
     if (parsed.protocol !== "https:") return false;
     const host = parsed.hostname.toLowerCase();
-    return host === "registry.npmjs.org"
-      || host.endsWith(".npmjs.org")
-      || host.endsWith(".npmmirror.com");
+    return (
+      host === "registry.npmjs.org" ||
+      host.endsWith(".npmjs.org") ||
+      host.endsWith(".npmmirror.com")
+    );
   } catch {
     return false;
   }
@@ -201,18 +303,31 @@ export async function scanVsix(file: string): Promise<Report> {
   await run("unzip", ["-q", file, "-d", extracted]);
   const extensionDir = join(extracted, "extension");
   const config = await readConfig();
-  return analyzeDirectory(basename(file), "vsix", extensionDir, file, file, {}, {
-    preset: config.preset,
-    safeResolver: config.safeResolver,
-    scanReason: "policy",
-  });
+  return analyzeDirectory(
+    basename(file),
+    "vsix",
+    extensionDir,
+    file,
+    file,
+    {},
+    {
+      preset: config.preset,
+      safeResolver: config.safeResolver,
+      scanReason: "policy",
+    },
+  );
 }
 
-export async function scanNpmStage(stageId: string, options: { offline?: boolean } = {}): Promise<Report> {
+export async function scanNpmStage(
+  stageId: string,
+  options: { offline?: boolean } = {},
+): Promise<Report> {
   const artifactPath = await downloadNpmStage(stageId);
   const extracted = await extractTarball(artifactPath);
   const packageDir = await findPackageRoot(extracted);
-  const pkg = await readJson<Record<string, unknown>>(join(packageDir, "package.json"));
+  const pkg = await readJson<Record<string, unknown>>(
+    join(packageDir, "package.json"),
+  );
   const name = String(pkg.name ?? "unknown");
   const version = String(pkg.version ?? "unknown");
   const known = name !== "unknown" && version !== "unknown";
@@ -226,16 +341,24 @@ export async function scanNpmStage(stageId: string, options: { offline?: boolean
     : [undefined, undefined, undefined];
   const typosquat = known ? checkTyposquat(name) : undefined;
   const config = await readConfig();
-  return analyzeDirectory(`npm-stage:${stageId}:${name}@${version}`, "npm-stage", packageDir, `npm stage download ${stageId}`, artifactPath, {
-    socket,
-    osv,
-    packageAge,
-    typosquat,
-  }, {
-    preset: config.preset,
-    safeResolver: config.safeResolver,
-    scanReason: "policy",
-  });
+  return analyzeDirectory(
+    `npm-stage:${stageId}:${name}@${version}`,
+    "npm-stage",
+    packageDir,
+    `npm stage download ${stageId}`,
+    artifactPath,
+    {
+      socket,
+      osv,
+      packageAge,
+      typosquat,
+    },
+    {
+      preset: config.preset,
+      safeResolver: config.safeResolver,
+      scanReason: "policy",
+    },
+  );
 }
 
 export async function analyzeDirectory(
@@ -253,7 +376,9 @@ export async function analyzeDirectory(
   inspectPackageJson(pkg, kind, findings);
   inspectIntelligence(intelligence, findings);
   await inspectFiles(dir, findings);
-  const artifact = artifactPath ? await artifactInfo(artifactPath, source) : { source, sha256: "not-applicable", bytes: 0 };
+  const artifact = artifactPath
+    ? await artifactInfo(artifactPath, source)
+    : { source, sha256: "not-applicable", bytes: 0 };
   const risk = summarizeRisk(findings);
   const config = await readConfig();
   const policy: ReportPolicy = policyOverride
@@ -261,7 +386,9 @@ export async function analyzeDirectory(
         preset: policyOverride.preset ?? config.preset,
         safeResolver: policyOverride.safeResolver ?? config.safeResolver,
         scanReason: policyOverride.scanReason ?? "direct-review",
-        ...(policyOverride.safeResolverSuggestion ? { safeResolverSuggestion: policyOverride.safeResolverSuggestion } : {}),
+        ...(policyOverride.safeResolverSuggestion
+          ? { safeResolverSuggestion: policyOverride.safeResolverSuggestion }
+          : {}),
       }
     : {
         preset: config.preset,
@@ -289,7 +416,10 @@ export async function analyzeDirectory(
   };
 }
 
-function inspectIntelligence(intelligence: Partial<Report["intelligence"]>, findings: Finding[]) {
+function inspectIntelligence(
+  intelligence: Partial<Report["intelligence"]>,
+  findings: Finding[],
+) {
   if (intelligence.socket?.status === "checked") {
     const score = intelligence.socket.supplyChainRisk;
     if (typeof score === "number" && score >= 0.3) {
@@ -298,20 +428,29 @@ function inspectIntelligence(intelligence: Partial<Report["intelligence"]>, find
         title: "Socket reports elevated supply-chain risk",
         severity: score >= 0.7 ? "high" : "medium",
         evidence: `supplyChainRiskScore=${score} (0=lowest risk, 1=highest risk)`,
-        recommendation: "Require agent review and inspect Socket package details before installing.",
+        recommendation:
+          "Require agent review and inspect Socket package details before installing.",
       });
     }
   }
 
   // OSV / GHSA known-vulnerability findings
-  if (intelligence.osv?.status === "checked" && intelligence.osv.vulnerabilities?.length) {
+  if (
+    intelligence.osv?.status === "checked" &&
+    intelligence.osv.vulnerabilities?.length
+  ) {
     for (const v of intelligence.osv.vulnerabilities) {
-      const aliases = v.aliases?.length ? ` (aliases: ${v.aliases.join(", ")})` : "";
+      const aliases = v.aliases?.length
+        ? ` (aliases: ${v.aliases.join(", ")})`
+        : "";
       findings.push({
         id: `osv.${v.id}`,
         title: `Known advisory: ${v.id}`,
         severity: v.severity,
-        evidence: (v.summary ? `${v.summary}${aliases}` : `${v.id}${aliases}`).slice(0, 400),
+        evidence: (v.summary
+          ? `${v.summary}${aliases}`
+          : `${v.id}${aliases}`
+        ).slice(0, 400),
         recommendation: `Review the advisory at osv.dev/${v.id} and upgrade to a patched version before installing.`,
       });
     }
@@ -325,16 +464,21 @@ function inspectIntelligence(intelligence: Partial<Report["intelligence"]>, find
         id: "npm.signature.missing",
         title: "No npm registry signature on this version",
         severity: "low",
-        evidence: sig.message ?? "dist.signatures was empty in the registry manifest.",
-        recommendation: "Older packages may lack signatures; a missing signature on a recent publish is unusual and worth a closer look.",
+        evidence:
+          sig.message ?? "dist.signatures was empty in the registry manifest.",
+        recommendation:
+          "Older packages may lack signatures; a missing signature on a recent publish is unusual and worth a closer look.",
       });
     } else if (sig.status === "unverified") {
       findings.push({
         id: "npm.signature.invalid",
         title: "npm registry signature failed verification",
         severity: "high",
-        evidence: sig.message ?? "Signature did not validate against the npm public keys.",
-        recommendation: "Do not install. The tarball or manifest may have been tampered with on the CDN path.",
+        evidence:
+          sig.message ??
+          "Signature did not validate against the npm public keys.",
+        recommendation:
+          "Do not install. The tarball or manifest may have been tampered with on the CDN path.",
       });
     } else if (sig.status === "error") {
       findings.push({
@@ -342,7 +486,8 @@ function inspectIntelligence(intelligence: Partial<Report["intelligence"]>, find
         title: "Could not verify npm registry signature",
         severity: "low",
         evidence: sig.message ?? "Signature verification raised an error.",
-        recommendation: "Re-run with network access; if the failure persists, treat the package as unverified.",
+        recommendation:
+          "Re-run with network access; if the failure persists, treat the package as unverified.",
       });
     }
   }
@@ -357,29 +502,40 @@ function inspectIntelligence(intelligence: Partial<Report["intelligence"]>, find
       title: "Package name closely resembles a popular package",
       severity: "high",
       evidence: `Close matches: ${sample}`,
-      recommendation: "Confirm you intended to install this exact name. Confused-deputy typosquats commonly imitate popular packages.",
+      recommendation:
+        "Confirm you intended to install this exact name. Confused-deputy typosquats commonly imitate popular packages.",
     });
   }
 
   // Package + version age signals
   if (intelligence.packageAge?.status === "checked") {
     const { packageAgeDays, versionAgeHours } = intelligence.packageAge;
-    if (typeof packageAgeDays === "number" && packageAgeDays >= 0 && packageAgeDays < 22) {
+    if (
+      typeof packageAgeDays === "number" &&
+      packageAgeDays >= 0 &&
+      packageAgeDays < 22
+    ) {
       findings.push({
         id: "package.new",
         title: "Package was first published very recently",
         severity: "medium",
         evidence: `Package first published ${packageAgeDays} day(s) ago.`,
-        recommendation: "New packages carry elevated risk; verify the publisher, source repo, and intended use before installing.",
+        recommendation:
+          "New packages carry elevated risk; verify the publisher, source repo, and intended use before installing.",
       });
     }
-    if (typeof versionAgeHours === "number" && versionAgeHours >= 0 && versionAgeHours < 24) {
+    if (
+      typeof versionAgeHours === "number" &&
+      versionAgeHours >= 0 &&
+      versionAgeHours < 24
+    ) {
       findings.push({
         id: "version.new",
         title: "Version was published in the last 24 hours",
         severity: "medium",
         evidence: `Version published ${versionAgeHours} hour(s) ago.`,
-        recommendation: "Brand-new versions are a common vector for compromised maintainer accounts. Pause and verify the publish.",
+        recommendation:
+          "Brand-new versions are a common vector for compromised maintainer accounts. Pause and verify the publish.",
       });
     }
   }
@@ -391,12 +547,17 @@ function inspectIntelligence(intelligence: Partial<Report["intelligence"]>, find
       title: "Active supply-chain advisory is enabled",
       severity: "medium",
       evidence: advisory.message,
-      recommendation: "Use staging flow only and require explicit acknowledgement before package operations.",
+      recommendation:
+        "Use staging flow only and require explicit acknowledgement before package operations.",
     });
   }
 }
 
-function inspectPackageJson(pkg: Record<string, unknown>, kind: "npm" | "npm-stage" | "vsix", findings: Finding[]) {
+function inspectPackageJson(
+  pkg: Record<string, unknown>,
+  kind: "npm" | "npm-stage" | "vsix",
+  findings: Finding[],
+) {
   const scripts = objectValue(pkg.scripts);
   for (const [name, raw] of Object.entries(scripts)) {
     const script = String(raw);
@@ -404,9 +565,11 @@ function inspectPackageJson(pkg: Record<string, unknown>, kind: "npm" | "npm-sta
       findings.push({
         id: `script.${name}`,
         title: `Lifecycle script: ${name}`,
-        severity: name === "install" || name === "postinstall" ? "high" : "medium",
+        severity:
+          name === "install" || name === "postinstall" ? "high" : "medium",
         evidence: script,
-        recommendation: "Manually inspect the script and require agent review before installing.",
+        recommendation:
+          "Manually inspect the script and require agent review before installing.",
       });
     }
     inspectText(`script.${name}`, script, findings, true);
@@ -419,19 +582,23 @@ function inspectPackageJson(pkg: Record<string, unknown>, kind: "npm" | "npm-sta
       title: "Package exposes executables",
       severity: "medium",
       evidence: JSON.stringify(bins),
-      recommendation: "Review executable entry points before adding to PATH or running commands.",
+      recommendation:
+        "Review executable entry points before adding to PATH or running commands.",
     });
   }
 
   if (kind === "vsix") {
-    const activationEvents = Array.isArray(pkg.activationEvents) ? pkg.activationEvents : [];
+    const activationEvents = Array.isArray(pkg.activationEvents)
+      ? pkg.activationEvents
+      : [];
     if (activationEvents.includes("*")) {
       findings.push({
         id: "vscode.activation.all",
         title: "Extension activates on startup",
         severity: "high",
         evidence: JSON.stringify(activationEvents),
-        recommendation: "Avoid broad activation unless the publisher and source are trusted.",
+        recommendation:
+          "Avoid broad activation unless the publisher and source are trusted.",
       });
     }
     if (pkg.main || pkg.browser) {
@@ -452,7 +619,8 @@ function inspectPackageJson(pkg: Record<string, unknown>, kind: "npm" | "npm-sta
       title: "Large dependency surface",
       severity: "medium",
       evidence: `${depCount} runtime dependencies`,
-      recommendation: "Use an agent or manual review to inspect newly introduced transitive risk.",
+      recommendation:
+        "Use an agent or manual review to inspect newly introduced transitive risk.",
     });
   }
 }
@@ -468,12 +636,16 @@ async function inspectFiles(dir: string, findings: Finding[]) {
         title: "Large packed file",
         severity: "medium",
         evidence: `${rel} is ${s.size} bytes`,
-        recommendation: "Confirm this file is expected in the published artifact.",
+        recommendation:
+          "Confirm this file is expected in the published artifact.",
       });
     }
     if (rel === "package.json") continue;
-    if (!/\.(js|cjs|mjs|ts|sh|ps1|cmd|node)$/i.test(file) || s.size > 300_000) continue;
-    const text = await Bun.file(file).text().catch(() => "");
+    if (!/\.(js|cjs|mjs|ts|sh|ps1|cmd|node)$/i.test(file) || s.size > 300_000)
+      continue;
+    const text = await Bun.file(file)
+      .text()
+      .catch(() => "");
     const stripped = stripComments(text).slice(0, 300_000);
     const minified = isMinified(stripped);
     if (minified) {
@@ -482,7 +654,8 @@ async function inspectFiles(dir: string, findings: Finding[]) {
         title: "Minified or bundled file",
         severity: "medium",
         evidence: `${rel} appears minified (average line length > 250 chars); pattern scanning may have reduced precision`,
-        recommendation: "Review the unminified source if available before installing and treat matched patterns as higher risk.",
+        recommendation:
+          "Review the unminified source if available before installing and treat matched patterns as higher risk.",
       });
     }
     inspectText(`file.${rel}`, stripped, findings, false, minified);
@@ -490,14 +663,25 @@ async function inspectFiles(dir: string, findings: Finding[]) {
 }
 
 function isMinified(text: string): boolean {
-  const lines = text.split("\n").filter((l) => l.trim().length > 0).slice(0, 20);
+  const lines = text
+    .split("\n")
+    .filter((l) => l.trim().length > 0)
+    .slice(0, 20);
   if (lines.length === 0) return false;
   const avg = lines.reduce((sum, l) => sum + l.length, 0) / lines.length;
   return avg > 250;
 }
 
-function inspectText(scope: string, text: string, findings: Finding[], isScript: boolean, inMinifiedFile = false) {
-  const patterns = isScript ? [...PATTERNS_ALL, ...PATTERNS_SCRIPTS_ONLY] : PATTERNS_ALL;
+function inspectText(
+  scope: string,
+  text: string,
+  findings: Finding[],
+  isScript: boolean,
+  inMinifiedFile = false,
+) {
+  const patterns = isScript
+    ? [...PATTERNS_ALL, ...PATTERNS_SCRIPTS_ONLY]
+    : PATTERNS_ALL;
   for (const [pattern, id, severity, title] of patterns) {
     const match = text.match(pattern);
     if (!match) continue;
@@ -515,18 +699,20 @@ function inspectText(scope: string, text: string, findings: Finding[], isScript:
 
 function summarizeRisk(findings: Finding[]): Risk {
   if (findings.some((finding) => finding.severity === "high")) return "high";
-  if (findings.some((finding) => finding.severity === "medium")) return "medium";
+  if (findings.some((finding) => finding.severity === "medium"))
+    return "medium";
   return "low";
 }
 
 function snippet(text: string, index: number) {
-  return text.slice(Math.max(0, index - 80), index + 160).replace(/\s+/g, " ").trim();
+  return text
+    .slice(Math.max(0, index - 80), index + 160)
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function stripComments(text: string) {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "");
+  return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 }
 
 async function artifactInfo(path: string, source: string) {
@@ -538,7 +724,10 @@ async function artifactInfo(path: string, source: string) {
   };
 }
 
-async function verifyIntegrity(path: string, expected: string): Promise<boolean> {
+async function verifyIntegrity(
+  path: string,
+  expected: string,
+): Promise<boolean> {
   if (!expected.startsWith("sha512-")) return true;
   const expectedB64 = expected.slice("sha512-".length);
   const bytes = Buffer.from(await Bun.file(path).arrayBuffer());
@@ -550,7 +739,10 @@ export async function resolveNpm(spec: string): Promise<Record<string, any>> {
   // Try npm view first — it handles workspace:, git deps, dist-tags, and all semver ranges.
   if (await commandExists("npm")) {
     try {
-      const proc = Bun.spawn(["npm", "view", spec, "--json"], { stdout: "pipe", stderr: "ignore" });
+      const proc = Bun.spawn(["npm", "view", spec, "--json"], {
+        stdout: "pipe",
+        stderr: "ignore",
+      });
       const text = await new Response(proc.stdout).text();
       const code = await proc.exited;
       if (code === 0 && text.trim()) {
@@ -566,34 +758,59 @@ export async function resolveNpm(spec: string): Promise<Record<string, any>> {
   if (version && !isRegistryVersionSpec(version)) {
     throw new Error(`Cannot resolve non-registry version spec: ${version}`);
   }
-  const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(name).replace("%40", "@")}`);
-  if (!res.ok) throw new Error(`Registry lookup failed for ${name}: ${res.status}`);
-  const data = await res.json() as Record<string, any>;
+  const res = await fetch(
+    `https://registry.npmjs.org/${encodeURIComponent(name).replace("%40", "@")}`,
+  );
+  if (!res.ok)
+    throw new Error(`Registry lookup failed for ${name}: ${res.status}`);
+  const data = (await res.json()) as Record<string, any>;
   const versions = Object.keys(data.versions ?? {});
-  const resolvedVersion = resolveNpmVersion(versions, data["dist-tags"] ?? {}, version);
+  const resolvedVersion = resolveNpmVersion(
+    versions,
+    data["dist-tags"] ?? {},
+    version,
+  );
   const meta = resolvedVersion ? data.versions?.[resolvedVersion] : undefined;
   if (!meta) {
-    throw new Error(`Version not found for ${spec}. Available dist-tags: ${Object.keys(data["dist-tags"] ?? {}).join(", ") || "(none)"}`);
+    throw new Error(
+      `Version not found for ${spec}. Available dist-tags: ${Object.keys(data["dist-tags"] ?? {}).join(", ") || "(none)"}`,
+    );
   }
   return meta;
 }
 
 export function isRegistryVersionSpec(version: string): boolean {
   if (!version || version.includes("://")) return false;
-  if (/^(workspace|file|link|git|github|patch|portal|catalog|npm):/i.test(version)) return false;
+  if (
+    /^(workspace|file|link|git|github|patch|portal|catalog|npm):/i.test(version)
+  )
+    return false;
   if (/^git\+/i.test(version)) return false;
   if (version.startsWith(".") || version.startsWith("/")) return false;
   if (/^\d+\.\d+\.\d+/.test(version)) return true;
-  if (/^[~^>=<]/.test(version) || version.includes("||") || version.includes(" - ") || /\d+\.x/.test(version)) {
+  if (
+    /^[~^>=<]/.test(version) ||
+    version.includes("||") ||
+    version.includes(" - ") ||
+    /\d+\.x/.test(version)
+  ) {
     return true;
   }
-  if (/^[a-zA-Z][a-zA-Z0-9._-]*$/.test(version) && !version.includes("/") && !version.includes(":")) {
+  if (
+    /^[a-zA-Z][a-zA-Z0-9._-]*$/.test(version) &&
+    !version.includes("/") &&
+    !version.includes(":")
+  ) {
     return true;
   }
   return false;
 }
 
-export function resolveNpmVersion(versions: string[], distTags: Record<string, string>, requested: string | undefined): string | undefined {
+export function resolveNpmVersion(
+  versions: string[],
+  distTags: Record<string, string>,
+  requested: string | undefined,
+): string | undefined {
   if (!requested) return distTags.latest;
   if (!isRegistryVersionSpec(requested)) return undefined;
   if (versions.includes(requested)) return requested;
@@ -605,18 +822,35 @@ export function resolveNpmVersion(versions: string[], distTags: Record<string, s
   return undefined;
 }
 
-function versionMatchesRequested(version: string, requested: string, versions: string[], distTags: Record<string, string>): boolean {
+function versionMatchesRequested(
+  version: string,
+  requested: string,
+  versions: string[],
+  distTags: Record<string, string>,
+): boolean {
   if (versions.includes(requested)) return version === requested;
   if (distTags[requested]) return version === distTags[requested];
   return Bun.semver.satisfies(version, requested);
 }
 
-type SemVer = { major: number; minor: number; patch: number; prerelease?: string };
+type SemVer = {
+  major: number;
+  minor: number;
+  patch: number;
+  prerelease?: string;
+};
 
 function parseSemver(version: string): SemVer | null {
-  const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/);
+  const match = version.match(
+    /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/,
+  );
   if (!match) return null;
-  return { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3]), prerelease: match[4] };
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3]),
+    prerelease: match[4],
+  };
 }
 
 function compareSemver(a: SemVer, b: SemVer): number {
@@ -625,7 +859,10 @@ function compareSemver(a: SemVer, b: SemVer): number {
   return a.patch - b.patch;
 }
 
-export function parsePackageSpec(spec: string): { name: string; version?: string } {
+export function parsePackageSpec(spec: string): {
+  name: string;
+  version?: string;
+} {
   if (spec.startsWith("@")) {
     const secondAt = spec.indexOf("@", 1);
     if (secondAt === -1) return { name: spec };
@@ -650,16 +887,25 @@ function buildReportPolicy(
   const safeResolver = base.safeResolver ?? "suggest";
   const scanReason = base.scanReason ?? "direct-review";
   const freshnessWindowHours = freshnessWindowHoursForPreset(preset);
-  const versionAgeHours = context.packageAge?.status === "checked" ? context.packageAge.versionAgeHours : undefined;
-  const suggestionPromise = safeResolver === "suggest" && context.name && context.resolvedVersion && typeof versionAgeHours === "number" && versionAgeHours >= 0 && versionAgeHours < freshnessWindowHours
-    ? buildSafeResolverSuggestion({
-        name: context.name,
-        requestedVersion: context.requestedVersion,
-        resolvedVersion: context.resolvedVersion,
-        freshnessWindowHours,
-        offline: context.offline,
-      })
-    : Promise.resolve(undefined);
+  const versionAgeHours =
+    context.packageAge?.status === "checked"
+      ? context.packageAge.versionAgeHours
+      : undefined;
+  const suggestionPromise =
+    safeResolver === "suggest" &&
+    context.name &&
+    context.resolvedVersion &&
+    typeof versionAgeHours === "number" &&
+    versionAgeHours >= 0 &&
+    versionAgeHours < freshnessWindowHours
+      ? buildSafeResolverSuggestion({
+          name: context.name,
+          requestedVersion: context.requestedVersion,
+          resolvedVersion: context.resolvedVersion,
+          freshnessWindowHours,
+          offline: context.offline,
+        })
+      : Promise.resolve(undefined);
   return suggestionPromise.then((safeResolverSuggestion) => ({
     preset,
     safeResolver,
@@ -701,9 +947,12 @@ export async function buildSafeResolverSuggestion(options: {
     };
   }
   try {
-    const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(options.name).replace("%40", "@")}`, {
-      headers: { Accept: "application/json" },
-    });
+    const res = await fetch(
+      `https://registry.npmjs.org/${encodeURIComponent(options.name).replace("%40", "@")}`,
+      {
+        headers: { Accept: "application/json" },
+      },
+    );
     if (!res.ok) {
       return {
         status: "unavailable",
@@ -713,7 +962,11 @@ export async function buildSafeResolverSuggestion(options: {
         freshnessWindowHours: options.freshnessWindowHours,
       };
     }
-    const data = await res.json() as { versions?: Record<string, Record<string, unknown>>; time?: Record<string, string>; "dist-tags"?: Record<string, string> };
+    const data = (await res.json()) as {
+      versions?: Record<string, Record<string, unknown>>;
+      time?: Record<string, string>;
+      "dist-tags"?: Record<string, string>;
+    };
     return pickSafeResolverSuggestion({
       name: options.name,
       requestedVersion: requested,
@@ -757,21 +1010,29 @@ export function pickSafeResolverSuggestion(options: {
   const allowPrerelease = requested.includes("-");
   const candidates = versions
     .filter((version) => version !== options.resolvedVersion)
-    .filter((version) => versionMatchesRequested(version, requested, versions, distTags))
+    .filter((version) =>
+      versionMatchesRequested(version, requested, versions, distTags),
+    )
     .filter((version) => {
       const parsed = parseSemver(version);
       if (!parsed) return false;
       if (parsed.prerelease && !allowPrerelease) return false;
       const published = options.publishTimes[version];
       if (!published) return false;
-      const ageHours = Math.floor((Date.now() - Date.parse(published)) / 3_600_000);
-      return Number.isFinite(ageHours) && ageHours >= options.freshnessWindowHours;
+      const ageHours = Math.floor(
+        (Date.now() - Date.parse(published)) / 3_600_000,
+      );
+      return (
+        Number.isFinite(ageHours) && ageHours >= options.freshnessWindowHours
+      );
     })
     .map((version) => ({
       version,
       parsed: parseSemver(version),
     }))
-    .filter((entry): entry is { version: string; parsed: SemVer } => !!entry.parsed)
+    .filter(
+      (entry): entry is { version: string; parsed: SemVer } => !!entry.parsed,
+    )
     .sort((a, b) => compareSemver(a.parsed, b.parsed));
   const suggested = candidates[candidates.length - 1]?.version;
   if (!suggested) {
@@ -810,18 +1071,28 @@ async function downloadNpmStage(stageId: string) {
   const before = new Set(await readdir(dir));
   await run("npm", ["stage", "download", stageId], { cwd: dir });
   const after = await readdir(dir);
-  const created = after.filter((name) => !before.has(name) && name.endsWith(".tgz"));
+  const created = after.filter(
+    (name) => !before.has(name) && name.endsWith(".tgz"),
+  );
   if (created.length !== 1) {
-    throw new Error(`Expected npm stage download to create one .tgz file, found ${created.length}`);
+    throw new Error(
+      `Expected npm stage download to create one .tgz file, found ${created.length}`,
+    );
   }
   const source = join(dir, created[0]);
-  const dest = join(CACHE_DIR, `npm-stage-${stageId.replace(/[^a-z0-9_.-]+/gi, "_")}.tgz`);
+  const dest = join(
+    CACHE_DIR,
+    `npm-stage-${stageId.replace(/[^a-z0-9_.-]+/gi, "_")}.tgz`,
+  );
   await Bun.write(dest, await Bun.file(source).arrayBuffer());
   return dest;
 }
 
 async function findPackageRoot(dir: string) {
-  const candidates = [join(dir, "package"), ...(await readdir(dir)).map((name) => join(dir, name))];
+  const candidates = [
+    join(dir, "package"),
+    ...(await readdir(dir)).map((name) => join(dir, name)),
+  ];
   for (const candidate of candidates) {
     try {
       const s = await stat(join(candidate, "package.json"));

@@ -3,7 +3,11 @@
   "version": "0.1.1",
   "description": "Local supply-chain install gate for npm packages and VS Code extensions with Socket, Codex, and PI review support.",
   "license": "MIT",
+  "engines": {
+    "bun": "1.3.14"
+  },
   "devDependencies": {
+    "@biomejs/biome": "2.3.8",
     "@types/bun": "latest",
     "playwright": "1.60.0"
   },
@@ -14,9 +18,11 @@
   "scripts": {
     "scguard": "bun run src/cli.ts",
     "build": "bun run scripts/build.ts",
+    "lint": "biome check .",
+    "format": "biome check --write .",
     "typecheck": "bunx tsc --noEmit",
     "test": "bun test src/analysis.test.ts src/config.test.ts src/integrations.test.ts src/intelligence.test.ts src/lockfile.test.ts src/lockfile-policy.test.ts src/pm.test.ts src/fixtures.test.ts src/sbom.test.ts src/security-regression.test.ts scripts/ansi-html.test.ts",
-    "check": "bun run typecheck && bun run src/cli.ts --help && bun run src/cli.ts self-test && bun run test",
+    "check": "bun run lint && bun run typecheck && bun run src/cli.ts --help && bun run src/cli.ts self-test && bun run test",
     "capture-demos": "bun run scripts/capture-demos.ts",
     "demo-screenshots": "bun run scripts/capture-demos.ts && bun run scripts/generate-demo-screenshots.mjs"
   },

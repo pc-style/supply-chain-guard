@@ -1,6 +1,5 @@
-import { join, relative } from "node:path";
 import { createPublicKey, createVerify } from "node:crypto";
-import { commandExists, readConfig, readOption, REPORT_DIR, ROOT } from "./core";
+import { join, relative } from "node:path";
 import type {
   AgentMode,
   AgentName,
@@ -14,9 +13,20 @@ import type {
   SocketResult,
   TyposquatResult,
 } from "./core";
+import {
+  commandExists,
+  REPORT_DIR,
+  ROOT,
+  readConfig,
+  readOption,
+} from "./core";
 import topNpmPackages from "./data/top-npm-packages.json";
 
-export async function checkSocket(name: string, version: string, options: { offline?: boolean } = {}): Promise<SocketResult> {
+export async function checkSocket(
+  name: string,
+  version: string,
+  options: { offline?: boolean } = {},
+): Promise<SocketResult> {
   const token = Bun.env.SOCKET_API_KEY;
   const packagePath = `${encodeURIComponent(name).replace("%40", "@")}/${encodeURIComponent(version)}`;
   const url = `https://api.socket.dev/v0/npm/${packagePath}/score`;
@@ -35,7 +45,8 @@ export async function checkSocket(name: string, version: string, options: { offl
       package: name,
       version,
       url,
-      message: "SOCKET_API_KEY is not set; Socket intelligence was not queried.",
+      message:
+        "SOCKET_API_KEY is not set; Socket intelligence was not queried.",
     };
   }
   const controller = new AbortController();
@@ -50,34 +61,50 @@ export async function checkSocket(name: string, version: string, options: { offl
     });
     clearTimeout(timeout);
     if (!res.ok) {
-      const message = res.status === 401 || res.status === 403
-        ? `Socket API token is invalid or lacks permission (HTTP ${res.status})`
-        : res.status === 429
-          ? "Socket API rate limit reached (HTTP 429); score skipped"
-          : res.status === 404
-            ? `Package not found in Socket index (HTTP 404)`
-            : `Socket returned HTTP ${res.status}`;
+      const message =
+        res.status === 401 || res.status === 403
+          ? `Socket API token is invalid or lacks permission (HTTP ${res.status})`
+          : res.status === 429
+            ? "Socket API rate limit reached (HTTP 429); score skipped"
+            : res.status === 404
+              ? `Package not found in Socket index (HTTP 404)`
+              : `Socket returned HTTP ${res.status}`;
       return { status: "error", package: name, version, url, message };
     }
-    const data = await res.json() as Record<string, any>;
+    const data = (await res.json()) as Record<string, any>;
     const score = data.score ?? data;
     const rawSupplyChainRisk = score?.supplyChainRisk;
-    const supplyChainRisk = typeof rawSupplyChainRisk === "number"
-      ? rawSupplyChainRisk
-      : typeof rawSupplyChainRisk?.score === "number"
-        ? rawSupplyChainRisk.score
-        : undefined;
-    return { status: "checked", package: name, version, url, supplyChainRisk, rawScore: score };
+    const supplyChainRisk =
+      typeof rawSupplyChainRisk === "number"
+        ? rawSupplyChainRisk
+        : typeof rawSupplyChainRisk?.score === "number"
+          ? rawSupplyChainRisk.score
+          : undefined;
+    return {
+      status: "checked",
+      package: name,
+      version,
+      url,
+      supplyChainRisk,
+      rawScore: score,
+    };
   } catch (error) {
     clearTimeout(timeout);
-    const message = error instanceof Error && error.name === "AbortError"
-      ? "Socket API timed out after 10s"
-      : error instanceof Error ? error.message : String(error);
+    const message =
+      error instanceof Error && error.name === "AbortError"
+        ? "Socket API timed out after 10s"
+        : error instanceof Error
+          ? error.message
+          : String(error);
     return { status: "error", package: name, version, url, message };
   }
 }
 
-export async function runAgentReviews(report: Report, reportPath: string, agents: AgentName[]): Promise<AgentReview[]> {
+export async function runAgentReviews(
+  report: Report,
+  reportPath: string,
+  agents: AgentName[],
+): Promise<AgentReview[]> {
   const reviews: AgentReview[] = [];
   for (const agent of agents) {
     reviews.push(await runAgentReview(report, reportPath, agent));
@@ -85,19 +112,48 @@ export async function runAgentReviews(report: Report, reportPath: string, agents
   return reviews;
 }
 
-export async function runAgentReview(report: Report, reportPath: string, agent: AgentName): Promise<AgentReview> {
-  if (!await commandExists(agent)) {
-    const outputPath = await writeAgentOutput(report, agent, `${agent} command is not installed or not on PATH.`);
-    return { agent, status: "error", outputPath, exitCode: 127, summary: `${agent} not found` };
+export async function runAgentReview(
+  report: Report,
+  reportPath: string,
+  agent: AgentName,
+): Promise<AgentReview> {
+  if (!(await commandExists(agent))) {
+    const outputPath = await writeAgentOutput(
+      report,
+      agent,
+      `${agent} command is not installed or not on PATH.`,
+    );
+    return {
+      agent,
+      status: "error",
+      outputPath,
+      exitCode: 127,
+      summary: `${agent} not found`,
+    };
   }
   const prompt = agentReviewPrompt(report, reportPath, agent);
-  const outputPath = join(REPORT_DIR, `${report.target.replace(/[^a-z0-9_.@-]+/gi, "_")}-${agent}-review.txt`);
-  const cmd = agent === "codex"
-    ? ["codex", "exec", "--cd", ROOT, "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-rules", "-"]
-    : ["pi", "-p", "--no-tools", "--no-context-files", prompt];
-  const proc = agent === "codex"
-    ? Bun.spawn(cmd, { stdin: "pipe", stdout: "pipe", stderr: "pipe" })
-    : Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe" });
+  const outputPath = join(
+    REPORT_DIR,
+    `${report.target.replace(/[^a-z0-9_.@-]+/gi, "_")}-${agent}-review.txt`,
+  );
+  const cmd =
+    agent === "codex"
+      ? [
+          "codex",
+          "exec",
+          "--cd",
+          ROOT,
+          "--sandbox",
+          "read-only",
+          "--skip-git-repo-check",
+          "--ignore-rules",
+          "-",
+        ]
+      : ["pi", "-p", "--no-tools", "--no-context-files", prompt];
+  const proc =
+    agent === "codex"
+      ? Bun.spawn(cmd, { stdin: "pipe", stdout: "pipe", stderr: "pipe" })
+      : Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe" });
   if (agent === "codex") {
     proc.stdin?.write(prompt);
     proc.stdin?.end();
@@ -108,7 +164,12 @@ export async function runAgentReview(report: Report, reportPath: string, agent: 
     proc.exited,
   ]);
   const cleanStderr = sanitizeAgentStderr(stderr);
-  const output = [stdout, cleanStderr && `\n--- stderr (sanitized) ---\n${cleanStderr}`].filter(Boolean).join("");
+  const output = [
+    stdout,
+    cleanStderr && `\n--- stderr (sanitized) ---\n${cleanStderr}`,
+  ]
+    .filter(Boolean)
+    .join("");
   await Bun.write(outputPath, output);
   const status = exitCode === 0 ? parseAgentDecision(output) : "error";
   return {
@@ -120,7 +181,11 @@ export async function runAgentReview(report: Report, reportPath: string, agent: 
   };
 }
 
-export function agentReviewPrompt(report: Report, reportPath: string, agent: AgentName) {
+export function agentReviewPrompt(
+  report: Report,
+  reportPath: string,
+  agent: AgentName,
+) {
   return [
     `You are ${agent === "pi" ? "PI" : "Codex"} acting as a mandatory supply-chain security reviewer before installation.`,
     "",
@@ -157,7 +222,12 @@ export function agentReviewPrompt(report: Report, reportPath: string, agent: Age
 function sanitizeAgentStderr(stderr: string) {
   return stderr
     .split("\n")
-    .filter((line) => !line.includes("```json") && !line.includes('"rawScore"') && !line.includes('"packageJson"'))
+    .filter(
+      (line) =>
+        !line.includes("```json") &&
+        !line.includes('"rawScore"') &&
+        !line.includes('"packageJson"'),
+    )
     .join("\n")
     .slice(0, 4000);
 }
@@ -171,15 +241,24 @@ function normalizedReviewSummary(report: Report) {
     kind: report.kind,
     generatedAt: report.generatedAt,
     decisionBasis: {
-      verdict: report.summary.installAllowed ? (report.summary.risk === "medium" ? "manual-risk-accepted" : "allow") : "block",
+      verdict: report.summary.installAllowed
+        ? report.summary.risk === "medium"
+          ? "manual-risk-accepted"
+          : "allow"
+        : "block",
       installAllowed: report.summary.installAllowed,
       risk: report.summary.risk,
       findingCount: report.summary.findingCount,
       why: report.summary.installAllowed
         ? `No high-severity findings (${medium.length} medium, ${report.findings.filter((f) => f.severity === "low").length} low).`
         : `${high.length} high-severity finding(s) block install.`,
-      skippedChecks: minified.map((f) => `Minified file skipped by static scanner: ${f.id.replace(/^file\./, "").replace(/\.minified$/, "")}`),
-      nextAction: minified.length ? "Inspect original source/package contents for minified files." : "Use findings and intelligence to decide.",
+      skippedChecks: minified.map(
+        (f) =>
+          `Minified file skipped by static scanner: ${f.id.replace(/^file\./, "").replace(/\.minified$/, "")}`,
+      ),
+      nextAction: minified.length
+        ? "Inspect original source/package contents for minified files."
+        : "Use findings and intelligence to decide.",
     },
     artifact: report.artifact,
     intelligence: normalizedIntelligence(report),
@@ -199,14 +278,16 @@ function normalizedIntelligence(report: Report) {
     socket: socket && {
       status: socket.status,
       supplyChainRisk: socket.supplyChainRisk,
-      scale: "0=lowest risk, 1=highest risk; do not treat as approval confidence",
+      scale:
+        "0=lowest risk, 1=highest risk; do not treat as approval confidence",
       message: socket.message,
       components: socketRiskComponents(socket.rawScore).slice(0, 12),
     },
     osv: {
       status: report.intelligence.osv?.status ?? "missing",
       vulnerabilityCount: report.intelligence.osv?.vulnerabilities?.length ?? 0,
-      vulnerabilities: report.intelligence.osv?.vulnerabilities?.slice(0, 10) ?? [],
+      vulnerabilities:
+        report.intelligence.osv?.vulnerabilities?.slice(0, 10) ?? [],
       message: report.intelligence.osv?.message,
     },
     npmSignature: report.intelligence.npmSignature,
@@ -219,7 +300,12 @@ function normalizedIntelligence(report: Report) {
 function socketRiskComponents(rawScore: unknown) {
   if (!rawScore || typeof rawScore !== "object") return [];
   return Object.entries(rawScore as Record<string, unknown>)
-    .filter(([, value]) => typeof value === "number" || typeof value === "boolean" || typeof value === "string")
+    .filter(
+      ([, value]) =>
+        typeof value === "number" ||
+        typeof value === "boolean" ||
+        typeof value === "string",
+    )
     .map(([key, value]) => `${key}=${String(value)}`);
 }
 
@@ -227,9 +313,11 @@ export function parseAgentDecision(output: string): AgentReview["status"] {
   // Only accept decisions that appear on their own line with the exact token,
   // optionally followed by surrounding whitespace. This prevents matches inside
   // prose like "I would approve" or "SCGUARD_DECISION: approve-ish".
-  const decisionLine = /^\s*SCGUARD_DECISION:\s*(approve|reject|manual-review)\s*$/gim;
+  const decisionLine =
+    /^\s*SCGUARD_DECISION:\s*(approve|reject|manual-review)\s*$/gim;
   const matches: string[] = [];
-  for (const m of output.matchAll(decisionLine)) matches.push(m[1].toLowerCase());
+  for (const m of output.matchAll(decisionLine))
+    matches.push(m[1].toLowerCase());
   if (matches.length === 0) return "manual-review";
   // If the agent emitted conflicting decisions, fail closed to manual-review.
   const unique = new Set(matches);
@@ -262,14 +350,24 @@ export function agentsFromMode(mode: AgentMode): AgentName[] {
   return [];
 }
 
-export async function writeAgentOutput(report: Report, agent: AgentName, output: string) {
-  const outputPath = join(REPORT_DIR, `${report.target.replace(/[^a-z0-9_.@-]+/gi, "_")}-${agent}-review.txt`);
+export async function writeAgentOutput(
+  report: Report,
+  agent: AgentName,
+  output: string,
+) {
+  const outputPath = join(
+    REPORT_DIR,
+    `${report.target.replace(/[^a-z0-9_.@-]+/gi, "_")}-${agent}-review.txt`,
+  );
   await Bun.write(outputPath, output);
   return outputPath;
 }
 
 export function summarizeAgentOutput(output: string) {
-  const lines = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const lines = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
   const errorLine = [...lines].reverse().find((line) => /^ERROR:/i.test(line));
   if (errorLine) return errorLine.slice(0, 240);
   return lines.find((line) => line !== "--- stderr ---")?.slice(0, 240) ?? "";
@@ -291,10 +389,18 @@ type OsvRawVuln = {
   references?: OsvReference[];
 };
 
-export async function checkOsv(name: string, version: string, options: { offline?: boolean } = {}): Promise<OsvResult> {
+export async function checkOsv(
+  name: string,
+  version: string,
+  options: { offline?: boolean } = {},
+): Promise<OsvResult> {
   const url = "https://api.osv.dev/v1/query";
   if (options.offline) {
-    return { status: "skipped", url, message: "Offline mode: OSV lookup skipped." };
+    return {
+      status: "skipped",
+      url,
+      message: "Offline mode: OSV lookup skipped.",
+    };
   }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
@@ -302,27 +408,39 @@ export async function checkOsv(name: string, version: string, options: { offline
     const res = await fetch(url, {
       method: "POST",
       signal: controller.signal,
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
       body: JSON.stringify({ version, package: { name, ecosystem: "npm" } }),
     });
     clearTimeout(timeout);
     if (!res.ok) {
-      return { status: "error", url, message: `OSV returned HTTP ${res.status}` };
+      return {
+        status: "error",
+        url,
+        message: `OSV returned HTTP ${res.status}`,
+      };
     }
-    const data = await res.json() as { vulns?: OsvRawVuln[] };
+    const data = (await res.json()) as { vulns?: OsvRawVuln[] };
     const vulnerabilities: OsvVulnerability[] = (data.vulns ?? []).map((v) => ({
       id: v.id,
       summary: v.summary ?? (v.details ? v.details.slice(0, 240) : undefined),
       severity: classifyOsvSeverity(v),
-      references: (v.references ?? []).map((r) => r.url).filter((u): u is string => !!u),
+      references: (v.references ?? [])
+        .map((r) => r.url)
+        .filter((u): u is string => !!u),
       aliases: v.aliases,
     }));
     return { status: "checked", url, vulnerabilities };
   } catch (error) {
     clearTimeout(timeout);
-    const message = error instanceof Error && error.name === "AbortError"
-      ? "OSV API timed out after 10s"
-      : error instanceof Error ? error.message : String(error);
+    const message =
+      error instanceof Error && error.name === "AbortError"
+        ? "OSV API timed out after 10s"
+        : error instanceof Error
+          ? error.message
+          : String(error);
     return { status: "error", url, message };
   }
 }
@@ -363,29 +481,33 @@ export function computeCvssV3BaseScore(vector: string): number | undefined {
     if (k && v) metrics[k] = v;
   }
   const get = (k: string) => metrics[k];
-  const AV = ({ N: 0.85, A: 0.62, L: 0.55, P: 0.2 } as const)[get("AV") as "N" | "A" | "L" | "P"];
+  const AV = ({ N: 0.85, A: 0.62, L: 0.55, P: 0.2 } as const)[
+    get("AV") as "N" | "A" | "L" | "P"
+  ];
   const AC = ({ L: 0.77, H: 0.44 } as const)[get("AC") as "L" | "H"];
   const UI = ({ N: 0.85, R: 0.62 } as const)[get("UI") as "N" | "R"];
   const S = get("S");
   if (S !== "U" && S !== "C") return undefined;
-  const PR_TABLE = S === "C"
-    ? ({ N: 0.85, L: 0.68, H: 0.5 } as const)
-    : ({ N: 0.85, L: 0.62, H: 0.27 } as const);
+  const PR_TABLE =
+    S === "C"
+      ? ({ N: 0.85, L: 0.68, H: 0.5 } as const)
+      : ({ N: 0.85, L: 0.62, H: 0.27 } as const);
   const PR = PR_TABLE[get("PR") as "N" | "L" | "H"];
-  const impactValue = (m: string) => ({ N: 0, L: 0.22, H: 0.56 } as const)[m as "N" | "L" | "H"];
+  const impactValue = (m: string) =>
+    (({ N: 0, L: 0.22, H: 0.56 }) as const)[m as "N" | "L" | "H"];
   const C = impactValue(get("C"));
   const I = impactValue(get("I"));
   const A = impactValue(get("A"));
   if ([AV, AC, UI, PR, C, I, A].some((v) => v === undefined)) return undefined;
   const iss = 1 - (1 - C!) * (1 - I!) * (1 - A!);
-  const impact = S === "C"
-    ? 7.52 * (iss - 0.029) - 3.25 * Math.pow(iss - 0.02, 15)
-    : 6.42 * iss;
+  const impact =
+    S === "C" ? 7.52 * (iss - 0.029) - 3.25 * (iss - 0.02) ** 15 : 6.42 * iss;
   if (impact <= 0) return 0;
   const exploitability = 8.22 * AV! * AC! * PR! * UI!;
-  const raw = S === "C"
-    ? Math.min(1.08 * (impact + exploitability), 10)
-    : Math.min(impact + exploitability, 10);
+  const raw =
+    S === "C"
+      ? Math.min(1.08 * (impact + exploitability), 10)
+      : Math.min(impact + exploitability, 10);
   // roundUp1: smallest number, specified to one decimal place, ≥ raw.
   return Math.ceil(raw * 10) / 10;
 }
@@ -394,7 +516,12 @@ export function computeCvssV3BaseScore(vector: string): number | undefined {
 // npm registry signature verification
 // ---------------------------------------------------------------------------
 
-type NpmKey = { keyid: string; key: string; scheme?: string; expires?: string | null };
+type NpmKey = {
+  keyid: string;
+  key: string;
+  scheme?: string;
+  expires?: string | null;
+};
 let npmKeysCache: NpmKey[] | undefined;
 
 async function fetchNpmKeys(): Promise<NpmKey[]> {
@@ -403,7 +530,9 @@ async function fetchNpmKeys(): Promise<NpmKey[]> {
   const timeout = setTimeout(() => controller.abort(), 10_000);
   let res: Response;
   try {
-    res = await fetch("https://registry.npmjs.org/-/npm/v1/keys", { signal: controller.signal });
+    res = await fetch("https://registry.npmjs.org/-/npm/v1/keys", {
+      signal: controller.signal,
+    });
   } catch (error) {
     clearTimeout(timeout);
     if (error instanceof Error && error.name === "AbortError") {
@@ -413,7 +542,7 @@ async function fetchNpmKeys(): Promise<NpmKey[]> {
   }
   clearTimeout(timeout);
   if (!res.ok) throw new Error(`npm keys lookup failed: HTTP ${res.status}`);
-  const data = await res.json() as { keys?: NpmKey[] };
+  const data = (await res.json()) as { keys?: NpmKey[] };
   if (!Array.isArray(data.keys) || data.keys.length === 0) {
     throw new Error("npm keys endpoint returned no keys");
   }
@@ -427,7 +556,11 @@ function isKeyUsable(key: NpmKey): boolean {
   return Number.isFinite(expiresAt) && expiresAt > Date.now();
 }
 
-function verifyEcdsaSignature(message: string, sigBase64: string, base64Key: string): boolean {
+function verifyEcdsaSignature(
+  message: string,
+  sigBase64: string,
+  base64Key: string,
+): boolean {
   const keyPem = `-----BEGIN PUBLIC KEY-----\n${base64Key}\n-----END PUBLIC KEY-----`;
   const publicKey = createPublicKey({ key: keyPem, format: "pem" });
   const verify = createVerify("SHA256");
@@ -443,7 +576,10 @@ export async function verifyNpmSignatures(
   options: { offline?: boolean } = {},
 ): Promise<NpmSignatureResult> {
   if (options.offline) {
-    return { status: "skipped", message: "Offline mode: npm signature verification skipped." };
+    return {
+      status: "skipped",
+      message: "Offline mode: npm signature verification skipped.",
+    };
   }
   const signatures = Array.isArray(dist.signatures)
     ? (dist.signatures as Array<{ keyid?: string; sig?: string }>)
@@ -454,24 +590,39 @@ export async function verifyNpmSignatures(
       message: "Registry returned no signatures for this version.",
     };
   }
-  const integrity = typeof dist.integrity === "string" ? dist.integrity : undefined;
+  const integrity =
+    typeof dist.integrity === "string" ? dist.integrity : undefined;
   if (!integrity) {
-    return { status: "error", message: "Cannot verify signature: dist.integrity is missing." };
+    return {
+      status: "error",
+      message: "Cannot verify signature: dist.integrity is missing.",
+    };
   }
   try {
     const keys = await fetchNpmKeys();
     const message = `${name}@${version}:${integrity}`;
     for (const sig of signatures) {
       if (!sig.keyid || !sig.sig) {
-        return { status: "error", message: "Malformed signature entry from registry." };
+        return {
+          status: "error",
+          message: "Malformed signature entry from registry.",
+        };
       }
       const key = keys.find((k) => k.keyid === sig.keyid);
       if (!key) {
-        return { status: "unverified", keyid: sig.keyid, message: `Signing key ${sig.keyid} not found in the npm key registry.` };
+        return {
+          status: "unverified",
+          keyid: sig.keyid,
+          message: `Signing key ${sig.keyid} not found in the npm key registry.`,
+        };
       }
       const ok = verifyEcdsaSignature(message, sig.sig, key.key);
       if (!ok) {
-        return { status: "unverified", keyid: sig.keyid, message: `Signature verification failed for keyid ${sig.keyid}.` };
+        return {
+          status: "unverified",
+          keyid: sig.keyid,
+          message: `Signature verification failed for keyid ${sig.keyid}.`,
+        };
       }
       if (!isKeyUsable(key)) {
         return {
@@ -512,8 +663,14 @@ export function checkTyposquat(name: string): TyposquatResult {
       matches.push({ name: top, distance: d });
     }
   }
-  matches.sort((a, b) => a.distance - b.distance || a.name.localeCompare(b.name));
-  return { status: "checked", exactMatch: false, suspiciousMatches: matches.slice(0, 5) };
+  matches.sort(
+    (a, b) => a.distance - b.distance || a.name.localeCompare(b.name),
+  );
+  return {
+    status: "checked",
+    exactMatch: false,
+    suspiciousMatches: matches.slice(0, 5),
+  };
 }
 
 export function levenshtein(a: string, b: string): number {
@@ -544,7 +701,10 @@ export async function checkPackageAge(
   options: { offline?: boolean } = {},
 ): Promise<PackageAgeResult> {
   if (options.offline) {
-    return { status: "skipped", message: "Offline mode: registry time lookup skipped." };
+    return {
+      status: "skipped",
+      message: "Offline mode: registry time lookup skipped.",
+    };
   }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
@@ -556,9 +716,12 @@ export async function checkPackageAge(
     });
     clearTimeout(timeout);
     if (!res.ok) {
-      return { status: "error", message: `Registry returned HTTP ${res.status}` };
+      return {
+        status: "error",
+        message: `Registry returned HTTP ${res.status}`,
+      };
     }
-    const data = await res.json() as { time?: Record<string, string> };
+    const data = (await res.json()) as { time?: Record<string, string> };
     const time = data.time ?? {};
     const created = time.created;
     const versionPublished = time[version];
@@ -578,17 +741,27 @@ export async function checkPackageAge(
     };
   } catch (error) {
     clearTimeout(timeout);
-    const message = error instanceof Error && error.name === "AbortError"
-      ? "Registry time lookup timed out after 10s"
-      : error instanceof Error ? error.message : String(error);
+    const message =
+      error instanceof Error && error.name === "AbortError"
+        ? "Registry time lookup timed out after 10s"
+        : error instanceof Error
+          ? error.message
+          : String(error);
     return { status: "error", message };
   }
 }
 
-export async function writeAgentPrompt(report: Report, agent: string, reportPath?: string) {
+export async function writeAgentPrompt(
+  report: Report,
+  agent: string,
+  reportPath?: string,
+) {
   const base = report.target.replace(/[^a-z0-9_.@-]+/gi, "_");
   const path = join(REPORT_DIR, `${base}-${agent}-prompt.md`);
   const agentName: AgentName = agent === "pi" ? "pi" : "codex";
-  await Bun.write(path, agentReviewPrompt(report, reportPath ?? path, agentName));
+  await Bun.write(
+    path,
+    agentReviewPrompt(report, reportPath ?? path, agentName),
+  );
   return path;
 }

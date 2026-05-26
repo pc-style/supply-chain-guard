@@ -4,7 +4,9 @@ import { dirname } from "node:path";
 
 const buildInfoPath = "src/buildInfo.ts";
 const outfile = Bun.env.SCGUARD_BUILD_OUTFILE ?? "dist/scguard";
-const pkg = JSON.parse(await Bun.file("package.json").text()) as { version?: string };
+const pkg = JSON.parse(await Bun.file("package.json").text()) as {
+  version?: string;
+};
 const versionOverride = Bun.env.SCGUARD_BUILD_VERSION?.trim();
 const version = normalizeVersion(versionOverride || pkg.version || "0.0.0");
 const commit = gitCommit() ?? "dev";
@@ -18,13 +20,18 @@ try {
   );
   await mkdir(dirname(outfile), { recursive: true });
 
-  const proc = Bun.spawn(["bun", "build", "src/cli.ts", "--compile", "--outfile", outfile], {
-    stdout: "inherit",
-    stderr: "inherit",
-  });
+  const proc = Bun.spawn(
+    ["bun", "build", "src/cli.ts", "--compile", "--outfile", outfile],
+    {
+      stdout: "inherit",
+      stderr: "inherit",
+    },
+  );
   exitCode = await proc.exited;
   if (exitCode === 0) {
-    console.log(`Built ${outfile} (${version}${commit !== "dev" ? ` ${commit}` : ""})`);
+    console.log(
+      `Built ${outfile} (${version}${commit !== "dev" ? ` ${commit}` : ""})`,
+    );
   }
 } finally {
   await Bun.write(buildInfoPath, originalBuildInfo);
