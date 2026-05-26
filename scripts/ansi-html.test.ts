@@ -44,4 +44,16 @@ describe("ansiToHtml", () => {
     expect(html).toContain("font-weight:600");
     expect(html).toContain("rgb(0,255,0)");
   });
+
+  test("truecolor background with zero channel does not reset styles", () => {
+    const html = ansiToHtml("\x1b[1m\x1b[48;2;0;40;0mcell\x1b[0m");
+    expect(html).toContain("font-weight:600");
+    expect(html).toContain("background:rgb(0,40,0)");
+  });
+
+  test("48;2 background zero channel in combined sequence keeps prior bold", () => {
+    const html = ansiToHtml("\x1b[1;48;2;0;40;0mcell\x1b[0m");
+    expect(html).toContain("font-weight:600");
+    expect(html).toContain("background:rgb(0,40,0)");
+  });
 });
