@@ -3,6 +3,9 @@
 Thanks for taking the time to contribute. This document explains how to get set
 up, how to verify your changes, and how to report problems.
 
+This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md). Please
+read it before participating.
+
 ## Development Setup
 
 Supply Chain Guard is a Bun + TypeScript project.
@@ -36,12 +39,6 @@ This runs:
 4. `bun test` for the unit-test suites under `src/*.test.ts`
 
 If any step fails, the change is not ready to land.
-
-## Accessibility
-
-Read [ACCESSIBILITY.md](./ACCESSIBILITY.md) before changing the CLI, documentation, or
-`site/`. Use the **Accessibility issue** template for barriers involving assistive
-technology or keyboard-only use. Site changes must pass `bun run a11y`.
 
 ## Filing Issues
 

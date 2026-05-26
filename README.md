@@ -7,7 +7,7 @@ A local review step for npm packages and VS Code extensions — inspect the arti
 
 Website: [scguard.pcstyle.dev](https://scguard.pcstyle.dev/)
 
-Accessibility: see [ACCESSIBILITY.md](./ACCESSIBILITY.md) for our commitment, reporting path, and contributor expectations.
+Contributing: [CONTRIBUTING.md](./CONTRIBUTING.md) · [CHANGELOG.md](./CHANGELOG.md) · [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) · [ACCESSIBILITY.md](./ACCESSIBILITY.md) · [SECURITY.md](./SECURITY.md)
 
 ## Quick Start
 
