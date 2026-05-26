@@ -3,6 +3,9 @@
 Thanks for taking the time to contribute. This document explains how to get set
 up, how to verify your changes, and how to report problems.
 
+This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md). Please
+read it before participating.
+
 ## Development Setup
 
 Supply Chain Guard is a Bun + TypeScript project.

@@ -5,7 +5,7 @@ const RGB: Record<string, [number, number, number]> = {
   green: [74, 222, 128],
   red: [248, 113, 113],
   gray: [161, 161, 170],
-  dim: [113, 113, 122],
+  dim: [184, 176, 176],
   blue: [147, 197, 253],
   white: [228, 228, 231],
 };
