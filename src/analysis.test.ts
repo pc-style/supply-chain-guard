@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   analyzeDirectory,
+  isAllowedPinnedTarballUrl,
   isRegistryVersionSpec,
   parsePackageSpec,
   pickSafeResolverSuggestion,
@@ -105,6 +106,33 @@ describe("isRegistryVersionSpec", () => {
   test("rejects package-manager protocol specs", () => {
     expect(isRegistryVersionSpec("workspace:*")).toBe(false);
     expect(isRegistryVersionSpec("file:../evil")).toBe(false);
+  });
+});
+
+describe("isAllowedPinnedTarballUrl", () => {
+  test("allows npm registry and mirror hosts over https", () => {
+    expect(
+      isAllowedPinnedTarballUrl(
+        "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz",
+      ),
+    ).toBe(true);
+    expect(
+      isAllowedPinnedTarballUrl(
+        "https://registry.npmmirror.com/lodash/-/lodash-4.17.21.tgz",
+      ),
+    ).toBe(true);
+  });
+
+  test("rejects non-registry and non-https tarball URLs", () => {
+    expect(
+      isAllowedPinnedTarballUrl("https://evil.example/pkg-1.0.0.tgz"),
+    ).toBe(false);
+    expect(
+      isAllowedPinnedTarballUrl(
+        "http://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz",
+      ),
+    ).toBe(false);
+    expect(isAllowedPinnedTarballUrl("not-a-url")).toBe(false);
   });
 });
 

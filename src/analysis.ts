@@ -283,7 +283,7 @@ async function scanNpmArtifact(context: {
   return report;
 }
 
-function isAllowedPinnedTarballUrl(url: string): boolean {
+export function isAllowedPinnedTarballUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== "https:") return false;
