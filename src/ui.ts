@@ -58,7 +58,11 @@ const RGB_TRUE: Record<string, RGB> = {
   white: [228, 228, 231],
 };
 
-function paint(text: string, name: keyof typeof RGB_TRUE, bold = false): string {
+function paint(
+  text: string,
+  name: keyof typeof RGB_TRUE,
+  bold = false,
+): string {
   if (!COLOR) return text;
   const open = TRUECOLOR
     ? `${ESC}${bold ? "1;" : ""}38;2;${RGB_TRUE[name].join(";")}m`
@@ -67,7 +71,11 @@ function paint(text: string, name: keyof typeof RGB_TRUE, bold = false): string 
   return `${open}${text}${close}`;
 }
 
-function bgPaint(text: string, name: keyof typeof RGB_TRUE, bold = true): string {
+function bgPaint(
+  text: string,
+  name: keyof typeof RGB_TRUE,
+  bold = true,
+): string {
   if (!COLOR) return ` ${text} `;
   const fg = TRUECOLOR ? `${ESC}38;2;15;15;15m` : `${ESC}30m`;
   const bg = TRUECOLOR
@@ -159,11 +167,25 @@ export function commandHint(label: string, cmd: string) {
 export class Spinner {
   private timer?: ReturnType<typeof setInterval>;
   private frame = 0;
-  private readonly frames = ["\u280B", "\u2819", "\u2839", "\u2838", "\u283C", "\u2834", "\u2826", "\u2827", "\u2807", "\u280F"];
+  private readonly frames = [
+    "\u280B",
+    "\u2819",
+    "\u2839",
+    "\u2838",
+    "\u283C",
+    "\u2834",
+    "\u2826",
+    "\u2827",
+    "\u2807",
+    "\u280F",
+  ];
   private readonly stream: NodeJS.WriteStream;
   private readonly isTTY: boolean;
 
-  constructor(private text: string, stream: NodeJS.WriteStream = process.stdout) {
+  constructor(
+    private text: string,
+    stream: NodeJS.WriteStream = process.stdout,
+  ) {
     this.stream = stream;
     this.isTTY = !!stream.isTTY && COLOR;
   }
@@ -204,12 +226,15 @@ export class Spinner {
   }
 
   private render() {
-    const f = this.frames[this.frame = (this.frame + 1) % this.frames.length];
+    const f = this.frames[(this.frame = (this.frame + 1) % this.frames.length)];
     this.stream.write(`\r\x1b[2K${c.amber(f, true)} ${c.gray(this.text)}`);
   }
 }
 
-export function withSpinner<T>(text: string, work: (spin: Spinner) => Promise<T>): Promise<T> {
+export function withSpinner<T>(
+  text: string,
+  work: (spin: Spinner) => Promise<T>,
+): Promise<T> {
   const spin = new Spinner(text).start();
   return work(spin)
     .then((value) => {

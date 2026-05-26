@@ -16,12 +16,16 @@ cd supply-chain-guard
 bun install
 ```
 
+Optional: copy `.env.example` to `.env` and set `SOCKET_API_KEY` when testing Socket integration locally. The CLI works without it.
+
 To run the CLI locally without installing it globally:
 
 ```sh
 bun run scguard -- --help
-bun run scguard -- review left-pad
+bun run scguard -- review left-pad --offline
 ```
+
+Use `--offline` for smoke tests so reviews do not depend on registry access or npm signature verification.
 
 ## Running the Checks
 
@@ -33,12 +37,15 @@ bun run check
 
 This runs:
 
-1. `bunx tsc --noEmit` for type-checking
-2. `scguard --help` to make sure the help text still renders
-3. `scguard self-test` to run analysis against the bundled fixtures
-4. `bun test` for the unit-test suites under `src/*.test.ts`
+1. `biome check .` for formatting and lint
+2. `bunx tsc --noEmit` for type-checking
+3. `bun run src/cli.ts --help` to make sure the help text still renders
+4. `bun run src/cli.ts self-test` to run analysis against the bundled fixtures
+5. `bun test` for the unit-test suites under `src/*.test.ts` and `scripts/*.test.ts`
 
 If any step fails, the change is not ready to land.
+
+For changes under `site/`, also run `bun run a11y` (see [ACCESSIBILITY.md](./ACCESSIBILITY.md)).
 
 ## Filing Issues
 

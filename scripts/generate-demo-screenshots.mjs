@@ -1,12 +1,12 @@
 #!/usr/bin/env node
+import { copyFile, mkdir, readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 /**
  * Render captured demo JSON into polished PNG screenshots (Playwright).
  * Syncs site/screenshots and docs/screenshots.
  */
 import { chromium } from "playwright";
-import { readFile, writeFile, mkdir, copyFile } from "node:fs/promises";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -53,7 +53,9 @@ const CSS = `
 `;
 
 function shellPage(demo) {
-  const lines = demo.lines.map((l) => `<div class="term-line">${l || "&nbsp;"}</div>`).join("");
+  const lines = demo.lines
+    .map((l) => `<div class="term-line">${l || "&nbsp;"}</div>`)
+    .join("");
   const cwd = demo.cwd || "./demo";
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${CSS}</style></head><body>
   <div class="terminal">
@@ -68,7 +70,9 @@ function shellPage(demo) {
 async function shot(browser, slug) {
   const raw = await readFile(join(DATA, `${slug}.json`), "utf8");
   const demo = JSON.parse(raw);
-  const page = await browser.newPage({ viewport: { width: 1120, height: 720 } });
+  const page = await browser.newPage({
+    viewport: { width: 1120, height: 720 },
+  });
   await page.setContent(shellPage(demo), { waitUntil: "domcontentloaded" });
   const el = page.locator(".terminal");
   await el.screenshot({ path: join(SITE_SHOTS, `${slug}.png`), type: "png" });
@@ -77,7 +81,9 @@ async function shot(browser, slug) {
 }
 
 async function main() {
-  const manifest = JSON.parse(await readFile(join(DATA, "manifest.json"), "utf8"));
+  const manifest = JSON.parse(
+    await readFile(join(DATA, "manifest.json"), "utf8"),
+  );
   await mkdir(SITE_SHOTS, { recursive: true });
   await mkdir(DOCS_SHOTS, { recursive: true });
 
@@ -89,7 +95,10 @@ async function main() {
   }
 
   for (const { slug } of manifest) {
-    await copyFile(join(SITE_SHOTS, `${slug}.png`), join(DOCS_SHOTS, `${slug}.png`));
+    await copyFile(
+      join(SITE_SHOTS, `${slug}.png`),
+      join(DOCS_SHOTS, `${slug}.png`),
+    );
   }
 
   console.log("\nSynced PNGs to site/screenshots and docs/screenshots");

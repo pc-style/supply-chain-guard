@@ -33,13 +33,19 @@ export function detectLockfile(dir: string): DetectedLockfile | null {
   return null;
 }
 
-export async function parseLockfile(detected: DetectedLockfile): Promise<LockfileEntry[]> {
+export async function parseLockfile(
+  detected: DetectedLockfile,
+): Promise<LockfileEntry[]> {
   const text = await Bun.file(detected.path).text();
   switch (detected.kind) {
-    case "npm":  return parseNpm(text);
-    case "bun":  return parseBun(text);
-    case "pnpm": return parsePnpm(text);
-    case "yarn": return parseYarn(text);
+    case "npm":
+      return parseNpm(text);
+    case "bun":
+      return parseBun(text);
+    case "pnpm":
+      return parsePnpm(text);
+    case "yarn":
+      return parseYarn(text);
   }
 }
 
@@ -47,7 +53,13 @@ function dedupe(entries: LockfileEntry[]): LockfileEntry[] {
   const seen = new Map<string, LockfileEntry>();
   for (const e of entries) {
     if (!e.name || !e.version) continue;
-    if (e.name.startsWith(".") || e.version.startsWith("file:") || e.version.startsWith("link:") || e.version.startsWith("workspace:")) continue;
+    if (
+      e.name.startsWith(".") ||
+      e.version.startsWith("file:") ||
+      e.version.startsWith("link:") ||
+      e.version.startsWith("workspace:")
+    )
+      continue;
     const key = `${e.name}@${e.version}`;
     const existing = seen.get(key);
     if (!existing) {
@@ -75,13 +87,18 @@ function dedupe(entries: LockfileEntry[]): LockfileEntry[] {
 export function parseNpm(text: string): LockfileEntry[] {
   const data = JSON.parse(text) as Record<string, unknown>;
   const out: LockfileEntry[] = [];
-  const packages = data.packages as Record<string, {
-    name?: string;
-    version?: string;
-    resolved?: string;
-    integrity?: string;
-    link?: boolean;
-  }> | undefined;
+  const packages = data.packages as
+    | Record<
+        string,
+        {
+          name?: string;
+          version?: string;
+          resolved?: string;
+          integrity?: string;
+          link?: boolean;
+        }
+      >
+    | undefined;
   if (packages) {
     for (const [path, info] of Object.entries(packages)) {
       if (!path || path === "" || info?.link) continue;
@@ -92,17 +109,34 @@ export function parseNpm(text: string): LockfileEntry[] {
       out.push({
         name,
         version,
-        ...(typeof info.resolved === "string" ? { resolved: info.resolved } : {}),
-        ...(typeof info.integrity === "string" ? { integrity: info.integrity } : {}),
+        ...(typeof info.resolved === "string"
+          ? { resolved: info.resolved }
+          : {}),
+        ...(typeof info.integrity === "string"
+          ? { integrity: info.integrity }
+          : {}),
       });
     }
   }
-  const deps = data.dependencies as Record<string, {
-    version?: string;
-    resolved?: string;
-    integrity?: string;
-    dependencies?: Record<string, { version?: string; resolved?: string; integrity?: string; dependencies?: unknown }>;
-  }> | undefined;
+  const deps = data.dependencies as
+    | Record<
+        string,
+        {
+          version?: string;
+          resolved?: string;
+          integrity?: string;
+          dependencies?: Record<
+            string,
+            {
+              version?: string;
+              resolved?: string;
+              integrity?: string;
+              dependencies?: unknown;
+            }
+          >;
+        }
+      >
+    | undefined;
   if (deps) walkNpmV1(deps, out);
   return dedupe(out);
 }
@@ -114,7 +148,15 @@ function nameFromNodeModulesPath(path: string): string | null {
 }
 
 function walkNpmV1(
-  deps: Record<string, { version?: string; resolved?: string; integrity?: string; dependencies?: Record<string, unknown> }>,
+  deps: Record<
+    string,
+    {
+      version?: string;
+      resolved?: string;
+      integrity?: string;
+      dependencies?: Record<string, unknown>;
+    }
+  >,
   out: LockfileEntry[],
 ) {
   for (const [name, info] of Object.entries(deps)) {
@@ -122,8 +164,12 @@ function walkNpmV1(
       out.push({
         name,
         version: info.version,
-        ...(typeof info.resolved === "string" ? { resolved: info.resolved } : {}),
-        ...(typeof info.integrity === "string" ? { integrity: info.integrity } : {}),
+        ...(typeof info.resolved === "string"
+          ? { resolved: info.resolved }
+          : {}),
+        ...(typeof info.integrity === "string"
+          ? { integrity: info.integrity }
+          : {}),
       });
     }
     if (info?.dependencies && typeof info.dependencies === "object") {
@@ -141,7 +187,7 @@ export function parseBun(text: string): LockfileEntry[] {
   if (packagesIdx < 0) return out;
   const rest = text.slice(packagesIdx);
   // Match: "anything": [ "name@version", ...
-  const re = /"([^"\n]+)"\s*:\s*\[\s*"((?:@[^@"\/]+\/)?[^@"\/]+)@([^"\]]+)"/g;
+  const re = /"([^"\n]+)"\s*:\s*\[\s*"((?:@[^@"/]+\/)?[^@"/]+)@([^"\]]+)"/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(rest))) {
     const name = m[2];
@@ -165,7 +211,9 @@ export function parsePnpm(text: string): LockfileEntry[] {
       continue;
     }
     if (!inPackages) continue;
-    const m = rawLine.match(/^\s{2}'?\/?((?:@[^@\/]+\/)?[^@\/]+)@([^:'\s]+)'?:\s*$/);
+    const m = rawLine.match(
+      /^\s{2}'?\/?((?:@[^@/]+\/)?[^@/]+)@([^:'\s]+)'?:\s*$/,
+    );
     if (!m) continue;
     const version = m[2];
     if (!isValidVersion(version)) continue;
@@ -182,16 +230,25 @@ export function parseYarn(text: string): LockfileEntry[] {
   const blocks = text.split(/\n(?=\S)/);
   for (const block of blocks) {
     const firstLine = block.split("\n")[0];
-    if (!firstLine || firstLine.startsWith("#") || firstLine.startsWith("__metadata")) continue;
+    if (
+      !firstLine ||
+      firstLine.startsWith("#") ||
+      firstLine.startsWith("__metadata")
+    )
+      continue;
     if (!firstLine.includes("@") || !firstLine.endsWith(":")) continue;
     const header = firstLine.slice(0, -1);
-    const firstSpec = header.split(",")[0].trim().replace(/^"(.*)"$/, "$1");
+    const firstSpec = header
+      .split(",")[0]
+      .trim()
+      .replace(/^"(.*)"$/, "$1");
     const at = firstSpec.lastIndexOf("@");
     if (at <= 0) continue;
     const name = firstSpec.slice(0, at);
     const range = firstSpec.slice(at + 1);
     // Skip non-npm protocols (workspace:, file:, link:, git*, http*, npm:scope/x@...).
-    if (/^(workspace|file|link|git|github|https?|patch)[:+]/i.test(range)) continue;
+    if (/^(workspace|file|link|git|github|https?|patch)[:+]/i.test(range))
+      continue;
     const versionMatch = block.match(/\n\s+version[:\s]+"?([^"\n]+)"?/);
     if (!versionMatch) continue;
     const version = versionMatch[1].trim().replace(/^"|"$/g, "");

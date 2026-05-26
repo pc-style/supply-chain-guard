@@ -1,8 +1,8 @@
-import { describe, test, expect, beforeAll } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { analyzeDirectory } from "./analysis";
-import { ensureLargeBinFixture } from "./fixtures-support";
 import { ROOT } from "./core";
+import { ensureLargeBinFixture } from "./fixtures-support";
 
 const FIXTURES = join(ROOT, "src", "fixtures");
 
@@ -11,7 +11,12 @@ beforeAll(async () => {
 });
 
 async function scan(dir: string) {
-  return analyzeDirectory(`fixture:${dir}`, "npm", join(FIXTURES, dir), "local-fixture");
+  return analyzeDirectory(
+    `fixture:${dir}`,
+    "npm",
+    join(FIXTURES, dir),
+    "local-fixture",
+  );
 }
 
 describe("benign-package fixture", () => {

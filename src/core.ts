@@ -1,13 +1,22 @@
-import { mkdir, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { mkdir, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 
 export type Risk = "low" | "medium" | "high";
 
-export type PolicyPreset = "quiet" | "default" | "strict-ci" | "enterprise" | "advisory";
+export type PolicyPreset =
+  | "quiet"
+  | "default"
+  | "strict-ci"
+  | "enterprise"
+  | "advisory";
 export type SafeResolverMode = "off" | "suggest";
-export type ScanReason = "fresh-version" | "changed-lockfile-entry" | "direct-review" | "policy";
+export type ScanReason =
+  | "fresh-version"
+  | "changed-lockfile-entry"
+  | "direct-review"
+  | "policy";
 
 export type VersionedPackage = {
   name: string;
@@ -149,7 +158,8 @@ export type LockfileBaseline = {
 export function findProjectRoot(start: string): string {
   let dir = start;
   while (true) {
-    if (existsSync(join(dir, "package.json")) || existsSync(join(dir, ".git"))) return dir;
+    if (existsSync(join(dir, "package.json")) || existsSync(join(dir, ".git")))
+      return dir;
     const parent = dirname(dir);
     if (parent === dir) return start;
     dir = parent;
@@ -163,10 +173,19 @@ export const CACHE_DIR = join(GUARD_DIR, "cache");
 export const WORK_DIR = join(GUARD_DIR, "work");
 export const REPORT_DIR = join(GUARD_DIR, "reports");
 export const LOCKFILE_BASELINE_PATH = join(GUARD_DIR, "lockfile-baseline.json");
-export const CONFIG_ENV_PATH = join(homedir(), ".config", "supply-chain-guard", "env");
+export const CONFIG_ENV_PATH = join(
+  homedir(),
+  ".config",
+  "supply-chain-guard",
+  "env",
+);
 export const CONFIG_DIR = join(homedir(), ".config", "supply-chain-guard");
 export const CONFIG_PATH = join(CONFIG_DIR, "config.json");
-export const DEFAULT_CONFIG: Config = { agentReview: "none", preset: "default", safeResolver: "suggest" };
+export const DEFAULT_CONFIG: Config = {
+  agentReview: "none",
+  preset: "default",
+  safeResolver: "suggest",
+};
 
 export async function ensureDirs() {
   await mkdir(CACHE_DIR, { recursive: true });
@@ -174,19 +193,31 @@ export async function ensureDirs() {
   await mkdir(REPORT_DIR, { recursive: true });
 }
 
-export async function run(cmd: string, args: string[], options: { cwd?: string } = {}) {
-  const proc = Bun.spawn([cmd, ...args], { cwd: options.cwd, stdout: "inherit", stderr: "inherit" });
+export async function run(
+  cmd: string,
+  args: string[],
+  options: { cwd?: string } = {},
+) {
+  const proc = Bun.spawn([cmd, ...args], {
+    cwd: options.cwd,
+    stdout: "inherit",
+    stderr: "inherit",
+  });
   const code = await proc.exited;
-  if (code !== 0) throw new Error(`${cmd} ${args.join(" ")} failed with exit code ${code}`);
+  if (code !== 0)
+    throw new Error(`${cmd} ${args.join(" ")} failed with exit code ${code}`);
 }
 
 export async function commandExists(command: string) {
-  const proc = Bun.spawn(["/bin/sh", "-lc", `command -v ${command}`], { stdout: "ignore", stderr: "ignore" });
-  return await proc.exited === 0;
+  const proc = Bun.spawn(["/bin/sh", "-lc", `command -v ${command}`], {
+    stdout: "ignore",
+    stderr: "ignore",
+  });
+  return (await proc.exited) === 0;
 }
 
 export async function readJson<T>(path: string): Promise<T> {
-  return await Bun.file(path).json() as T;
+  return (await Bun.file(path).json()) as T;
 }
 
 export function requireArg(value: string | undefined, message: string) {
@@ -208,29 +239,45 @@ export function debug(message: string) {
 }
 
 export function objectValue(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 export async function walk(dir: string): Promise<string[]> {
   const out: string[] = [];
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...await walk(path));
+    if (entry.isDirectory()) out.push(...(await walk(path)));
     if (entry.isFile()) out.push(path);
   }
   return out;
 }
 
 export function normalizeAgentMode(value: string): AgentMode {
-  if (value === "none" || value === "codex" || value === "pi" || value === "both") return value;
+  if (
+    value === "none" ||
+    value === "codex" ||
+    value === "pi" ||
+    value === "both"
+  )
+    return value;
   throw new Error("agentReview must be one of: none, codex, pi, both");
 }
 
 export function normalizePolicyPreset(value: string): PolicyPreset {
-  if (value === "quiet" || value === "default" || value === "strict-ci" || value === "enterprise" || value === "advisory") {
+  if (
+    value === "quiet" ||
+    value === "default" ||
+    value === "strict-ci" ||
+    value === "enterprise" ||
+    value === "advisory"
+  ) {
     return value;
   }
-  throw new Error("preset must be one of: quiet, default, strict-ci, enterprise, advisory");
+  throw new Error(
+    "preset must be one of: quiet, default, strict-ci, enterprise, advisory",
+  );
 }
 
 export function normalizeSafeResolverMode(value: string): SafeResolverMode {
@@ -241,13 +288,26 @@ export function normalizeSafeResolverMode(value: string): SafeResolverMode {
 export function normalizeConfig(raw: Partial<Config> | undefined): Config {
   const config = raw && typeof raw === "object" ? raw : {};
   return {
-    agentReview: normalizeAgentMode(typeof config.agentReview === "string" ? config.agentReview : DEFAULT_CONFIG.agentReview),
-    preset: normalizePolicyPreset(typeof config.preset === "string" ? config.preset : DEFAULT_CONFIG.preset),
-    safeResolver: normalizeSafeResolverMode(typeof config.safeResolver === "string" ? config.safeResolver : DEFAULT_CONFIG.safeResolver),
+    agentReview: normalizeAgentMode(
+      typeof config.agentReview === "string"
+        ? config.agentReview
+        : DEFAULT_CONFIG.agentReview,
+    ),
+    preset: normalizePolicyPreset(
+      typeof config.preset === "string" ? config.preset : DEFAULT_CONFIG.preset,
+    ),
+    safeResolver: normalizeSafeResolverMode(
+      typeof config.safeResolver === "string"
+        ? config.safeResolver
+        : DEFAULT_CONFIG.safeResolver,
+    ),
   };
 }
 
-export function applyConfigEnv(config: Config, presetOverride = Bun.env.SCGUARD_PRESET): Config {
+export function applyConfigEnv(
+  config: Config,
+  presetOverride = Bun.env.SCGUARD_PRESET,
+): Config {
   if (!presetOverride) return config;
   return { ...config, preset: normalizePolicyPreset(presetOverride) };
 }
@@ -270,7 +330,9 @@ export async function writeConfig(config: Config) {
   await Bun.write(CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`);
 }
 
-export async function readLockfileBaseline(path = LOCKFILE_BASELINE_PATH): Promise<LockfileBaseline | null> {
+export async function readLockfileBaseline(
+  path = LOCKFILE_BASELINE_PATH,
+): Promise<LockfileBaseline | null> {
   try {
     return await readJson<LockfileBaseline>(path);
   } catch {
@@ -278,7 +340,10 @@ export async function readLockfileBaseline(path = LOCKFILE_BASELINE_PATH): Promi
   }
 }
 
-export async function writeLockfileBaseline(baseline: LockfileBaseline, path = LOCKFILE_BASELINE_PATH) {
+export async function writeLockfileBaseline(
+  baseline: LockfileBaseline,
+  path = LOCKFILE_BASELINE_PATH,
+) {
   await mkdir(dirname(path), { recursive: true });
   await Bun.write(path, `${JSON.stringify(baseline, null, 2)}\n`);
 }
@@ -299,20 +364,35 @@ export function readActiveAdvisory(): ActiveAdvisory {
   const message = Bun.env.SCGUARD_ACTIVE_INCIDENT;
   const until = Bun.env.SCGUARD_ACTIVE_INCIDENT_UNTIL;
   if (!message) {
-    return { active: false, source: "env", message: "No active supply-chain advisory configured." };
+    return {
+      active: false,
+      source: "env",
+      message: "No active supply-chain advisory configured.",
+    };
   }
   if (until && Date.parse(until) < Date.now()) {
-    return { active: false, source: "env", message: `Configured advisory expired at ${until}.`, until };
+    return {
+      active: false,
+      source: "env",
+      message: `Configured advisory expired at ${until}.`,
+      until,
+    };
   }
   return { active: true, source: "env", message, until };
 }
 
-export function requireActiveIncidentAcceptance(advisory = readActiveAdvisory()) {
+export function requireActiveIncidentAcceptance(
+  advisory = readActiveAdvisory(),
+) {
   if (!advisory.active) return;
   console.error(`scguard: ACTIVE SUPPLY-CHAIN ADVISORY: ${advisory.message}`);
-  console.error("scguard: type exactly 'I accept the active supply-chain risk' to continue.");
+  console.error(
+    "scguard: type exactly 'I accept the active supply-chain risk' to continue.",
+  );
   const answer = prompt("> ");
   if (answer !== "I accept the active supply-chain risk") {
-    throw new Error("Package operation cancelled because active incident risk was not accepted.");
+    throw new Error(
+      "Package operation cancelled because active incident risk was not accepted.",
+    );
   }
 }

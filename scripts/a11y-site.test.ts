@@ -1,6 +1,6 @@
+import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { test, expect } from "bun:test";
 import { chromium } from "playwright";
 
 const SITE_ROOT = join(import.meta.dir, "..", "site");
@@ -30,12 +30,33 @@ test("marketing site has no serious or critical axe violations", async () => {
     await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "networkidle" });
     await page.addScriptTag({ content: AXE_SOURCE });
     const results = await page.evaluate(async () => {
-      const axe = (window as unknown as { axe: { run: (ctx?: unknown, opts?: unknown) => Promise<{ violations: { id: string; impact?: string; help: string; nodes: { target: string[] }[] }[] }> } }).axe;
+      const axe = (
+        window as unknown as {
+          axe: {
+            run: (
+              ctx?: unknown,
+              opts?: unknown,
+            ) => Promise<{
+              violations: {
+                id: string;
+                impact?: string;
+                help: string;
+                nodes: { target: string[] }[];
+              }[];
+            }>;
+          };
+        }
+      ).axe;
       return axe.run(document, {
-        runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"] },
+        runOnly: {
+          type: "tag",
+          values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"],
+        },
       });
     });
-    const blocking = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+    const blocking = results.violations.filter(
+      (v) => v.impact === "serious" || v.impact === "critical",
+    );
     expect(blocking).toEqual([]);
   } finally {
     await context.close();

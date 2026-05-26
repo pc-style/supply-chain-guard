@@ -1,21 +1,7 @@
 #!/usr/bin/env bun
 import { resolve } from "node:path";
-import {
-  ensureDirs,
-  readJson,
-  readOption,
-  requireArg,
-} from "./core";
-import type { Report } from "./core";
-import { BUILD_COMMIT, BUILD_VERSION } from "./buildInfo";
 import { scanNpm, scanNpmStage, scanVsix } from "./analysis";
-import {
-  resolveAgentMode,
-  runAgentReviews,
-  writeAgentPrompt,
-} from "./integrations";
-import { emitReport, maybeRunConfiguredAgentReview } from "./reporting";
-import { isOfflineMode } from "./offline";
+import { BUILD_COMMIT, BUILD_VERSION } from "./buildInfo";
 import {
   cleanCommand,
   configCommand,
@@ -26,6 +12,15 @@ import {
   selfTest,
   shellHook,
 } from "./commands";
+import type { Report } from "./core";
+import { ensureDirs, readJson, readOption, requireArg } from "./core";
+import {
+  resolveAgentMode,
+  runAgentReviews,
+  writeAgentPrompt,
+} from "./integrations";
+import { isOfflineMode } from "./offline";
+import { emitReport, maybeRunConfiguredAgentReview } from "./reporting";
 import { banner, c, style } from "./ui";
 
 async function main() {
@@ -36,7 +31,16 @@ async function main() {
   }
   await ensureDirs();
 
-  const SILENT_CMDS = new Set(["shell-hook", "doctor", "--help", "-h", "--version", "-v", "version", "self-test"]);
+  const SILENT_CMDS = new Set([
+    "shell-hook",
+    "doctor",
+    "--help",
+    "-h",
+    "--version",
+    "-v",
+    "version",
+    "self-test",
+  ]);
   if (
     !Bun.env.SCGUARD_SHELL_HOOK_ACTIVE &&
     !Bun.env.SCGUARD_SUPPRESS_HOOK_WARN &&
@@ -45,7 +49,7 @@ async function main() {
   ) {
     process.stderr.write(
       `${c.amber("scguard:", true)} ${c.dim("shell hook not active — package manager commands are unguarded.")}\n` +
-      `         ${c.dim('Run: eval "$(scguard shell-hook)"   or add it to your shell profile.')}\n`,
+        `         ${c.dim('Run: eval "$(scguard shell-hook)"   or add it to your shell profile.')}\n`,
     );
   }
 
@@ -64,8 +68,18 @@ async function main() {
     const emitOpts = { sbom: args.includes("--sbom") };
     const offline = isOfflineMode(args);
     const report = await scanNpm(target, { offline });
-    const reportPath = await emitReport(report, args.includes("--json"), emitOpts);
-    await maybeRunConfiguredAgentReview(report, reportPath, args, args.includes("--json"), emitOpts);
+    const reportPath = await emitReport(
+      report,
+      args.includes("--json"),
+      emitOpts,
+    );
+    await maybeRunConfiguredAgentReview(
+      report,
+      reportPath,
+      args,
+      args.includes("--json"),
+      emitOpts,
+    );
     return;
   }
 
@@ -74,13 +88,25 @@ async function main() {
     const emitOpts = { sbom: args.includes("--sbom") };
     const offline = isOfflineMode(args);
     const report = await scanNpmStage(stageId, { offline });
-    const reportPath = await emitReport(report, args.includes("--json"), emitOpts);
-    await maybeRunConfiguredAgentReview(report, reportPath, args, args.includes("--json"), emitOpts);
+    const reportPath = await emitReport(
+      report,
+      args.includes("--json"),
+      emitOpts,
+    );
+    await maybeRunConfiguredAgentReview(
+      report,
+      reportPath,
+      args,
+      args.includes("--json"),
+      emitOpts,
+    );
     return;
   }
 
   if (cmd === "add") {
-    console.error("scguard: 'add' is deprecated. Use 'scguard review' to scan-only, or 'scguard install' to scan then install.");
+    console.error(
+      "scguard: 'add' is deprecated. Use 'scguard review' to scan-only, or 'scguard install' to scan then install.",
+    );
     await reviewOrInstall(args, { install: args.includes("--approve") });
     return;
   }
@@ -115,13 +141,26 @@ async function main() {
     const file = requireArg(args[0], "scan-vsix requires a .vsix path");
     const emitOpts = { sbom: args.includes("--sbom") };
     const report = await scanVsix(resolve(file));
-    const reportPath = await emitReport(report, args.includes("--json"), emitOpts);
-    await maybeRunConfiguredAgentReview(report, reportPath, args, args.includes("--json"), emitOpts);
+    const reportPath = await emitReport(
+      report,
+      args.includes("--json"),
+      emitOpts,
+    );
+    await maybeRunConfiguredAgentReview(
+      report,
+      reportPath,
+      args,
+      args.includes("--json"),
+      emitOpts,
+    );
     return;
   }
 
   if (cmd === "agent-prompt") {
-    const reportPath = requireArg(args[0], "agent-prompt requires a report path");
+    const reportPath = requireArg(
+      args[0],
+      "agent-prompt requires a report path",
+    );
     const agent = readOption(args, "--agent") ?? "codex";
     const report = await readJson<Report>(reportPath);
     const promptPath = await writeAgentPrompt(report, agent);
@@ -130,7 +169,10 @@ async function main() {
   }
 
   if (cmd === "agent-review") {
-    const reportPath = requireArg(args[0], "agent-review requires a report path");
+    const reportPath = requireArg(
+      args[0],
+      "agent-review requires a report path",
+    );
     const report = await readJson<Report>(reportPath);
     const agentMode = await resolveAgentMode(args);
     const agents = agentMode.length > 0 ? agentMode : ["codex" as const];
@@ -165,13 +207,19 @@ async function main() {
 }
 
 function formatVersion() {
-  return BUILD_COMMIT === "dev" ? BUILD_VERSION : `${BUILD_VERSION} (${BUILD_COMMIT})`;
+  return BUILD_COMMIT === "dev"
+    ? BUILD_VERSION
+    : `${BUILD_VERSION} (${BUILD_COMMIT})`;
 }
 
 function normalizeArgv(argv: string[]) {
   const raw = argv.slice(1);
   const first = raw[0] ?? "";
-  if (first.endsWith("src/cli.ts") || first.endsWith("/scguard") || first.endsWith("\\scguard")) {
+  if (
+    first.endsWith("src/cli.ts") ||
+    first.endsWith("/scguard") ||
+    first.endsWith("\\scguard")
+  ) {
     return raw.slice(1);
   }
   return raw;
@@ -180,36 +228,103 @@ function normalizeArgv(argv: string[]) {
 async function help() {
   console.log(banner(formatVersion()));
   console.log("");
-  console.log(`${c.red("WARNING:", true)} ${c.white("Supply Chain Guard is VERY VERY EARLY STAGE.", true)}`);
-  console.log(c.gray("It can miss malicious packages, flag safe ones, and break package-manager flows. Treat it as a warning layer, not proof of safety."));
+  console.log(
+    `${c.red("WARNING:", true)} ${c.white("Supply Chain Guard is VERY VERY EARLY STAGE.", true)}`,
+  );
+  console.log(
+    c.gray(
+      "It can miss malicious packages, flag safe ones, and break package-manager flows. Treat it as a warning layer, not proof of safety.",
+    ),
+  );
   console.log("");
   section("Common");
-  item("scguard review", "<package[@version]> [--agent codex|pi|both] [--sbom] [--offline]", "Download, stage, and analyze a package without installing it.");
-  item("scguard install", "<package[@version]> [--dev] [--pm bun|npm|pnpm|yarn] [--agent codex|pi|both] [--sbom] [--offline]", "Review, then install only after the gate (and any agent review) passes. Direct package installs stay strict even when the app preset is more relaxed.");
-  item("scguard scan-vsix", "<extension.vsix> [--json] [--sbom]", "Analyze a downloaded VS Code extension artifact.");
-  item("scguard doctor", "", "Check dependencies, PATH, shell hook, Socket token, and agent CLIs.");
-  item("scguard clean", "[--reports] [--cache] [--work] [--all]", "Remove cached artifacts, working dirs, or report history.");
-  item("scguard config", "[--show] [--preset quiet|default|strict-ci|enterprise|advisory] [--safe-resolver off|suggest] [--agent none|codex|pi|both]", "Set the default policy preset, safe resolver mode, and agent-review policy.");
+  item(
+    "scguard review",
+    "<package[@version]> [--agent codex|pi|both] [--sbom] [--offline]",
+    "Download, stage, and analyze a package without installing it.",
+  );
+  item(
+    "scguard install",
+    "<package[@version]> [--dev] [--pm bun|npm|pnpm|yarn] [--agent codex|pi|both] [--sbom] [--offline]",
+    "Review, then install only after the gate (and any agent review) passes. Direct package installs stay strict even when the app preset is more relaxed.",
+  );
+  item(
+    "scguard scan-vsix",
+    "<extension.vsix> [--json] [--sbom]",
+    "Analyze a downloaded VS Code extension artifact.",
+  );
+  item(
+    "scguard doctor",
+    "",
+    "Check dependencies, PATH, shell hook, Socket token, and agent CLIs.",
+  );
+  item(
+    "scguard clean",
+    "[--reports] [--cache] [--work] [--all]",
+    "Remove cached artifacts, working dirs, or report history.",
+  );
+  item(
+    "scguard config",
+    "[--show] [--preset quiet|default|strict-ci|enterprise|advisory] [--safe-resolver off|suggest] [--agent none|codex|pi|both]",
+    "Set the default policy preset, safe resolver mode, and agent-review policy.",
+  );
 
   section("Setup");
-  item("scguard shell-hook", "[--fish]", "Print shell functions that route bun/npm/pnpm/yarn/code through scguard (use --fish for fish shell).");
+  item(
+    "scguard shell-hook",
+    "[--fish]",
+    "Print shell functions that route bun/npm/pnpm/yarn/code through scguard (use --fish for fish shell).",
+  );
   item("scguard version", "", "Print the installed version.");
 
   section("Advanced");
-  item("scguard scan-lockfile", "[dir]", "Scan lockfile packages using the active preset policy. Used by the shell hook for bare 'install'.");
-  item("scguard scan-npm", "<package[@version]> [--json]", "Scan a published npm package directly.");
-  item("scguard scan-stage", "<stage-id> [--json]", "Scan an npm staged-publish artifact.");
-  item("scguard guard", "bun|npm|pnpm|yarn|code <args...>", "Wrap a package-manager command behind the gate.");
-  item("scguard agent-prompt", "<report.json> --agent codex|pi", "Emit the agent review prompt for a report.");
-  item("scguard agent-review", "<report.json> --agent codex|pi|both", "Run an agent review against a report.");
+  item(
+    "scguard scan-lockfile",
+    "[dir]",
+    "Scan lockfile packages using the active preset policy. Used by the shell hook for bare 'install'.",
+  );
+  item(
+    "scguard scan-npm",
+    "<package[@version]> [--json]",
+    "Scan a published npm package directly.",
+  );
+  item(
+    "scguard scan-stage",
+    "<stage-id> [--json]",
+    "Scan an npm staged-publish artifact.",
+  );
+  item(
+    "scguard guard",
+    "bun|npm|pnpm|yarn|code <args...>",
+    "Wrap a package-manager command behind the gate.",
+  );
+  item(
+    "scguard agent-prompt",
+    "<report.json> --agent codex|pi",
+    "Emit the agent review prompt for a report.",
+  );
+  item(
+    "scguard agent-review",
+    "<report.json> --agent codex|pi|both",
+    "Run an agent review against a report.",
+  );
   item("scguard self-test", "", "Validate analysis on the bundled fixture.");
 
   section("Environment");
   env("SCGUARD_BYPASS=1", "Skip the guard for a single command.");
   env("SOCKET_API_KEY", "Enable Socket.dev intelligence on npm scans.");
-  env("SCGUARD_ACTIVE_INCIDENT", "Require typed acknowledgement during an active advisory.");
-  env("SCGUARD_LOCKFILE_CONCURRENCY", "Parallel package scans for scan-lockfile (default 8).");
-  env("SCGUARD_PRESET", "Override the active preset for the current shell session.");
+  env(
+    "SCGUARD_ACTIVE_INCIDENT",
+    "Require typed acknowledgement during an active advisory.",
+  );
+  env(
+    "SCGUARD_LOCKFILE_CONCURRENCY",
+    "Parallel package scans for scan-lockfile (default 8).",
+  );
+  env(
+    "SCGUARD_PRESET",
+    "Override the active preset for the current shell session.",
+  );
   env("SCGUARD_OFFLINE=1", "Disable all network calls (same as --offline).");
   env("NO_COLOR", "Disable ANSI colors (also honored by SCGUARD_NO_COLOR).");
   env("SCGUARD_NO_COLOR", "Disable ANSI colors in CLI output.");
@@ -222,7 +337,7 @@ function section(title: string) {
 }
 
 function item(cmd: string, sig: string, detail: string) {
-  const head = `${style.prompt()} ${c.white(cmd, true)}${sig ? " " + c.blue(sig) : ""}`;
+  const head = `${style.prompt()} ${c.white(cmd, true)}${sig ? ` ${c.blue(sig)}` : ""}`;
   console.log(`  ${head}`);
   console.log(`      ${c.gray(detail)}`);
 }

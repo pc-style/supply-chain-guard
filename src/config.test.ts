@@ -15,11 +15,13 @@ describe("config normalization", () => {
   });
 
   test("keeps explicit policy fields", () => {
-    expect(normalizeConfig({
-      agentReview: "codex",
-      preset: "quiet",
-      safeResolver: "off",
-    })).toEqual({
+    expect(
+      normalizeConfig({
+        agentReview: "codex",
+        preset: "quiet",
+        safeResolver: "off",
+      }),
+    ).toEqual({
       agentReview: "codex",
       preset: "quiet",
       safeResolver: "off",
@@ -27,11 +29,16 @@ describe("config normalization", () => {
   });
 
   test("applies shell-session preset override", () => {
-    expect(applyConfigEnv({
-      agentReview: "none",
-      preset: "default",
-      safeResolver: "suggest",
-    }, "enterprise")).toEqual({
+    expect(
+      applyConfigEnv(
+        {
+          agentReview: "none",
+          preset: "default",
+          safeResolver: "suggest",
+        },
+        "enterprise",
+      ),
+    ).toEqual({
       agentReview: "none",
       preset: "enterprise",
       safeResolver: "suggest",

@@ -1,7 +1,7 @@
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   buildInstallCommand,
   detectPackageManager,
@@ -53,7 +53,10 @@ describe("isPackageManager", () => {
 
 describe("detectPackageManager", () => {
   test("explicit --pm flag wins over everything", async () => {
-    const dir = await fixture("flag-wins", { "bun.lock": "", "package.json": "{}" });
+    const dir = await fixture("flag-wins", {
+      "bun.lock": "",
+      "package.json": "{}",
+    });
     const detected = detectPackageManager(dir, ["--pm", "pnpm"]);
     expect(detected.pm).toBe("pnpm");
     expect(detected.source).toBe("flag");
@@ -117,27 +120,39 @@ describe("detectPackageManager", () => {
 
 describe("buildInstallCommand", () => {
   test("bun add", () => {
-    expect(buildInstallCommand("bun", ["react"]))
-      .toEqual({ cmd: "bun", args: ["add", "react"] });
+    expect(buildInstallCommand("bun", ["react"])).toEqual({
+      cmd: "bun",
+      args: ["add", "react"],
+    });
   });
   test("bun add --dev", () => {
-    expect(buildInstallCommand("bun", ["react"], { dev: true }))
-      .toEqual({ cmd: "bun", args: ["add", "--dev", "react"] });
+    expect(buildInstallCommand("bun", ["react"], { dev: true })).toEqual({
+      cmd: "bun",
+      args: ["add", "--dev", "react"],
+    });
   });
   test("npm install --save-dev", () => {
-    expect(buildInstallCommand("npm", ["react"], { dev: true }))
-      .toEqual({ cmd: "npm", args: ["install", "--save-dev", "react"] });
+    expect(buildInstallCommand("npm", ["react"], { dev: true })).toEqual({
+      cmd: "npm",
+      args: ["install", "--save-dev", "react"],
+    });
   });
   test("pnpm add --save-dev", () => {
-    expect(buildInstallCommand("pnpm", ["react"], { dev: true }))
-      .toEqual({ cmd: "pnpm", args: ["add", "--save-dev", "react"] });
+    expect(buildInstallCommand("pnpm", ["react"], { dev: true })).toEqual({
+      cmd: "pnpm",
+      args: ["add", "--save-dev", "react"],
+    });
   });
   test("yarn add --dev", () => {
-    expect(buildInstallCommand("yarn", ["react"], { dev: true }))
-      .toEqual({ cmd: "yarn", args: ["add", "--dev", "react"] });
+    expect(buildInstallCommand("yarn", ["react"], { dev: true })).toEqual({
+      cmd: "yarn",
+      args: ["add", "--dev", "react"],
+    });
   });
   test("multiple specs", () => {
-    expect(buildInstallCommand("npm", ["react", "lodash@4"]))
-      .toEqual({ cmd: "npm", args: ["install", "react", "lodash@4"] });
+    expect(buildInstallCommand("npm", ["react", "lodash@4"])).toEqual({
+      cmd: "npm",
+      args: ["install", "react", "lodash@4"],
+    });
   });
 });
