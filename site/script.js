@@ -19,13 +19,7 @@ document.querySelectorAll("[data-copy]").forEach((btn) => {
       sel?.removeAllRanges();
       span.remove();
     }
-    btn.classList.add("copied");
-    const label = btn.querySelector(".copy-label");
-    if (label) label.textContent = "copied";
-    setTimeout(() => {
-      btn.classList.remove("copied");
-      if (label) label.textContent = "copy install";
-    }, 1600);
+    copyFeedback(btn, "copied");
   });
 });
 

@@ -37,6 +37,12 @@ This runs:
 
 If any step fails, the change is not ready to land.
 
+## Accessibility
+
+Read [ACCESSIBILITY.md](./ACCESSIBILITY.md) before changing the CLI, documentation, or
+`site/`. Use the **Accessibility issue** template for barriers involving assistive
+technology or keyboard-only use. Site changes must pass `bun run a11y`.
+
 ## Filing Issues
 
 Use the [issue tracker](https://github.com/pc-style/supply-chain-guard/issues)
