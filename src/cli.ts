@@ -284,8 +284,8 @@ async function help() {
   );
   item(
     "scguard skill install",
-    "init|on|off|status [--agents-md path] [--dry-run] [--json]",
-    "Add agent instructions to AGENTS.md and optional Cursor skill files (Codex, Cursor, Pi, etc.).",
+    "[--dry-run] [--skill-source pc-style/supply-chain-guard]",
+    "Run npx skills add pc-style/supply-chain-guard for Codex, Cursor, Pi, and other agents.",
   );
   item("scguard version", "", "Print the installed version.");
 
