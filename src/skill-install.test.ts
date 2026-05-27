@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readOption } from "./core";
 import {
   buildSkillsInstallCommand,
   DEFAULT_SKILL_NAME,
@@ -16,6 +17,16 @@ describe("skill install", () => {
       "--skill",
       DEFAULT_SKILL_NAME,
     ]);
+  });
+
+  test("readOption ignores a following flag as the value", () => {
+    expect(readOption(["--project", "--dry-run"], "--project")).toBeUndefined();
+    expect(
+      readOption(["--skill-source", "--dry-run"], "--skill-source"),
+    ).toBeUndefined();
+    expect(readOption(["--project", "/tmp/proj"], "--project")).toBe(
+      "/tmp/proj",
+    );
   });
 
   test("buildSkillsInstallCommand accepts a custom source", () => {

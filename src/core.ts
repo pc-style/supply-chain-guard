@@ -228,7 +228,11 @@ export function requireArg(value: string | undefined, message: string) {
 export function readOption(args: string[], name: string) {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === name) return args[i + 1];
+    if (arg === name) {
+      const value = args[i + 1];
+      if (!value || value.startsWith("-")) return undefined;
+      return value;
+    }
     if (arg.startsWith(`${name}=`)) return arg.slice(name.length + 1);
   }
   return undefined;

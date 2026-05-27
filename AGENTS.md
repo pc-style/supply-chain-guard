@@ -23,7 +23,7 @@ All commands are documented in `package.json` scripts:
 | Unit tests | `bun run test` |
 | Full CI check | `bun run check` |
 | Run CLI | `bun run scguard -- <args>` |
-| Agent integration | `bun run scguard -- skill install` (runs `npx skills add pc-style/supply-chain-guard`) |
+| Agent integration | `bun run scguard -- skill install` (runs `npx skills add pc-style/supply-chain-guard -y --skill supply-chain-guard`) |
 | Build binary | `bun run build` |
 
 `bun run check` is the single pre-PR gate — it runs Biome, typecheck, help render, self-test on fixtures, and the full unit test suite. Bun `1.3.14` is pinned in `package.json` `engines` and CI.

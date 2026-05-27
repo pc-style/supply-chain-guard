@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { applyConfigEnv, DEFAULT_CONFIG, normalizeConfig } from "./core";
+import {
+  applyConfigEnv,
+  DEFAULT_CONFIG,
+  normalizeConfig,
+  readOption,
+} from "./core";
 
 describe("config normalization", () => {
   test("defaults are preset-aware", () => {
@@ -26,6 +31,11 @@ describe("config normalization", () => {
       preset: "quiet",
       safeResolver: "off",
     });
+  });
+
+  test("readOption rejects flag-like values after the flag name", () => {
+    expect(readOption(["--preset", "--show"], "--preset")).toBeUndefined();
+    expect(readOption(["--preset", "quiet"], "--preset")).toBe("quiet");
   });
 
   test("applies shell-session preset override", () => {
