@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `scguard skill install` with `init`, `on`, `off`, and `status` for AGENTS.md and Cursor skill integration (Codex, Cursor, Pi, and other agents).
+- Bundled `skills/scguard/` templates with layered `--help` and `--dry-run` support.
 - Biome for formatting and linting, wired into `bun run check` and CI.
 - `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1).
 - `CHANGELOG.md` (this file).

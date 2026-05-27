@@ -94,7 +94,10 @@ scguard doctor
 scguard clean [--reports] [--cache] [--work] [--all]
 scguard config [--show] [--preset quiet|default|strict-ci|enterprise|advisory] [--safe-resolver off|suggest] [--agent none|codex|pi|both]
 scguard shell-hook
+scguard skill install init    # AGENTS.md + Cursor skill for coding agents
 ```
+
+`scguard skill install init` appends managed Supply Chain Guard rules to `AGENTS.md` and copies `.cursor/skills/supply-chain-guard/SKILL.md`. Use `off` / `on` to temporarily disable or restore agent routing instructions. Run `scguard skill install --help` for examples.
 
 Advanced commands: `scguard scan-lockfile`, `scguard scan-npm`, `scguard scan-stage`, `scguard guard`, `scguard agent-prompt`, `scguard agent-review`, `scguard self-test`.
 
