@@ -21,6 +21,7 @@ import {
 } from "./integrations";
 import { isOfflineMode } from "./offline";
 import { emitReport, maybeRunConfiguredAgentReview } from "./reporting";
+import { skillCommand } from "./skill-install";
 import { banner, c, style } from "./ui";
 
 async function main() {
@@ -40,6 +41,7 @@ async function main() {
     "-v",
     "version",
     "self-test",
+    "skill",
   ]);
   if (
     !Bun.env.SCGUARD_SHELL_HOOK_ACTIVE &&
@@ -203,6 +205,11 @@ async function main() {
     return;
   }
 
+  if (cmd === "skill") {
+    await skillCommand(args);
+    return;
+  }
+
   throw new Error(`Unknown command: ${cmd}`);
 }
 
@@ -274,6 +281,11 @@ async function help() {
     "scguard shell-hook",
     "[--fish]",
     "Print shell functions that route bun/npm/pnpm/yarn/code through scguard (use --fish for fish shell).",
+  );
+  item(
+    "scguard skill install",
+    "[--dry-run] [--skill-source pc-style/supply-chain-guard]",
+    "Run npx skills add pc-style/supply-chain-guard for Codex, Cursor, Pi, and other agents.",
   );
   item("scguard version", "", "Print the installed version.");
 

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `scguard skill` (help) and `scguard skill install` (runs `npx skills add pc-style/supply-chain-guard`) for Codex, Cursor, Pi, and other agents.
+- Bundled `skills/scguard/SKILL.md` published with the repo for the Vercel skills CLI.
 - Biome for formatting and linting, wired into `bun run check` and CI.
 - `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1).
 - `CHANGELOG.md` (this file).

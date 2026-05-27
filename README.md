@@ -94,7 +94,10 @@ scguard doctor
 scguard clean [--reports] [--cache] [--work] [--all]
 scguard config [--show] [--preset quiet|default|strict-ci|enterprise|advisory] [--safe-resolver off|suggest] [--agent none|codex|pi|both]
 scguard shell-hook
+scguard skill install         # npx skills add pc-style/supply-chain-guard
 ```
+
+`scguard skill install` runs `npx skills add pc-style/supply-chain-guard -y --skill supply-chain-guard` so Codex, Cursor, Pi, and other agents pick up the skill. Run `scguard skill` for help.
 
 Advanced commands: `scguard scan-lockfile`, `scguard scan-npm`, `scguard scan-stage`, `scguard guard`, `scguard agent-prompt`, `scguard agent-review`, `scguard self-test`.
 
