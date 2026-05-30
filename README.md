@@ -7,7 +7,7 @@ A local review step for npm packages and VS Code extensions — inspect the arti
 
 Website: [scguard.pcstyle.dev](https://scguard.pcstyle.dev/)
 
-Contributing: [CONTRIBUTING.md](./CONTRIBUTING.md) · [CHANGELOG.md](./CHANGELOG.md) · [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) · [ACCESSIBILITY.md](./ACCESSIBILITY.md) · [SECURITY.md](./SECURITY.md)
+Contributing: [CONTRIBUTING.md](./CONTRIBUTING.md) · [CHANGELOG.md](./CHANGELOG.md) · [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) · [SECURITY.md](./SECURITY.md)
 
 ## Quick Start
 
@@ -49,25 +49,25 @@ The installer is also the updater. It clones or pulls this repo into `~/.local/s
 
 Scan a package before it is installed:
 
-![Supply Chain Guard scanning an npm package](docs/screenshots/scan-npm.png)
+![Supply Chain Guard scanning an npm package](site/screenshots/scan-npm.png)
 
 Stage a package without installing it, then approve it when the report looks clean:
 
-![Supply Chain Guard withholding an install until approval](docs/screenshots/add-withheld.png)
+![Supply Chain Guard withholding an install until approval](site/screenshots/add-withheld.png)
 
-![Supply Chain Guard installing after approval](docs/screenshots/add-approved.png)
+![Supply Chain Guard installing after approval](site/screenshots/add-approved.png)
 
 Broad updates are blocked unless you name the packages to review:
 
-![Supply Chain Guard blocking a broad update](docs/screenshots/block-broad-update.png)
+![Supply Chain Guard blocking a broad update](site/screenshots/block-broad-update.png)
 
 VS Code extensions can be scanned from a local `.vsix` file:
 
-![Supply Chain Guard scanning a VS Code extension artifact](docs/screenshots/scan-vsix.png)
+![Supply Chain Guard scanning a VS Code extension artifact](site/screenshots/scan-vsix.png)
 
 Every run leaves JSON, Markdown, and agent-review prompts under `.scguard/reports`:
 
-![Supply Chain Guard generated reports](docs/screenshots/generated-reports.png)
+![Supply Chain Guard generated reports](site/screenshots/generated-reports.png)
 
 Demo captures are generated from real CLI runs:
 

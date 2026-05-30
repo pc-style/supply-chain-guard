@@ -1,7 +1,0 @@
-{
-  "plugins": {
-    "agent-compatibility": {
-      "enabled": true
-    }
-  }
-}
