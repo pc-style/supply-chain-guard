@@ -45,8 +45,6 @@ This runs:
 
 If any step fails, the change is not ready to land.
 
-For changes under `site/`, also run `bun run a11y` (see [ACCESSIBILITY.md](./ACCESSIBILITY.md)).
-
 ## Filing Issues
 
 Use the [issue tracker](https://github.com/pc-style/supply-chain-guard/issues)

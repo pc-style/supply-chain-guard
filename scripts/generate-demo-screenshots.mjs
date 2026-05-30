@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-import { copyFile, mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 /**
  * Render captured demo JSON into polished PNG screenshots (Playwright).
- * Syncs site/screenshots and docs/screenshots.
+ * Writes site screenshots used by the marketing page and README.
  */
 import { chromium } from "playwright";
 
@@ -13,7 +13,6 @@ const ROOT = join(__dirname, "..");
 const SITE = join(ROOT, "site");
 const DATA = join(SITE, "demo-data");
 const SITE_SHOTS = join(SITE, "screenshots");
-const DOCS_SHOTS = join(ROOT, "docs", "screenshots");
 
 const CSS = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -85,7 +84,6 @@ async function main() {
     await readFile(join(DATA, "manifest.json"), "utf8"),
   );
   await mkdir(SITE_SHOTS, { recursive: true });
-  await mkdir(DOCS_SHOTS, { recursive: true });
 
   const browser = await chromium.launch({ headless: true });
   try {
@@ -94,14 +92,7 @@ async function main() {
     await browser.close();
   }
 
-  for (const { slug } of manifest) {
-    await copyFile(
-      join(SITE_SHOTS, `${slug}.png`),
-      join(DOCS_SHOTS, `${slug}.png`),
-    );
-  }
-
-  console.log("\nSynced PNGs to site/screenshots and docs/screenshots");
+  console.log("\nWrote PNGs to site/screenshots");
 }
 
 main().catch((err) => {

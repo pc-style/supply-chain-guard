@@ -14,7 +14,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Biome for formatting and linting, wired into `bun run check` and CI.
 - `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1).
 - `CHANGELOG.md` (this file).
-- `ACCESSIBILITY.md`, accessibility issue template, PR checklist, and `bun run a11y` CI scan for the marketing site.
 - GitHub issue templates for bug reports and feature requests.
 - `--json` flag on `scguard review` and `scguard install`.
 
@@ -25,7 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CONTRIBUTING smoke-test example uses `--offline`; test paths and check steps match `package.json`.
 - AGENTS.md clarifies zero production npm dependencies vs dev-only tooling.
 - Marketing site: skip link, keyboard-operable demo tabs, focus styles, higher-contrast terminal demo colors.
-- `CONTRIBUTING.md` and `README.md` link to accessibility and community docs.
+
+### Removed
+
+- Standalone accessibility policy, issue template, checklist, and site-only axe CI workflow.
 
 ## [0.1.1] - 2026-05-25
 

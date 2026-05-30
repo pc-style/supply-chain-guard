@@ -1,5 +1,5 @@
 name: Bug report
-description: Report incorrect behavior (not accessibility-specific — use the Accessibility template for a11y barriers).
+description: Report incorrect behavior in the CLI, docs, or website.
 labels:
   - bug
 body:

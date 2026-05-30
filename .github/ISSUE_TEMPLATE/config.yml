@@ -1,8 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Accessibility reports
-    url: https://github.com/pc-style/supply-chain-guard/issues/new?template=accessibility.yml
-    about: Barriers with assistive technology, keyboard-only use, or readable output — see ACCESSIBILITY.md
   - name: Security disclosure
     url: https://github.com/pc-style/supply-chain-guard/blob/main/SECURITY.md
     about: Do not file public issues for security vulnerabilities
