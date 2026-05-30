@@ -11,3 +11,4 @@ skills-lock.json
 .pi/
 dist/
 .firecrawl/
+.vercel
