@@ -70,9 +70,7 @@ export async function reviewOrInstall(
   opts: { install: boolean },
 ) {
   const cleanArgs = stripGuardOptions(args);
-  const specs = cleanArgs.filter(
-    (arg) => !arg.startsWith("--") && arg !== "-d",
-  );
+  const specs = directPackageSpecs(cleanArgs);
   if (specs.length === 0) {
     throw new Error(
       `${opts.install ? "install" : "review"} requires at least one package spec, e.g. 'scguard ${opts.install ? "install" : "review"} react@18.3.1'`,
@@ -870,12 +868,17 @@ export function nonOptionTokens(args: string[]): string[] {
   return tokens;
 }
 
+export function directPackageSpecs(args: string[]): string[] {
+  return nonOptionTokens(args);
+}
+
 // Options across npm/bun/pnpm/yarn install commands whose next argument is
 // their value (not a package spec). Conservative superset; missing entries
 // only result in over-scanning, never under-scanning.
 const VALUE_OPTIONS = new Set([
   "--prefix",
   "--registry",
+  "--config",
   "--tag",
   "--otp",
   "--access",
