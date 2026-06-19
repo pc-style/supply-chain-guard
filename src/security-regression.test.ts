@@ -9,9 +9,11 @@ import {
 } from "./analysis";
 import {
   classifyPackageCommand,
+  directPackageSpecs,
   findPackageSubcommand,
   nonOptionTokens,
   planLockfileSelection,
+  stripGuardOptions,
 } from "./commands";
 import { parseNpm } from "./lockfile";
 
@@ -112,6 +114,34 @@ describe("security regressions", () => {
     expect(result.packageOperation).toBe(true);
     expect(result.action).toBe("install");
     expect(result.specs).toEqual(["lodash"]);
+  });
+
+  test("direct install specs skip package-manager option values", () => {
+    const args = stripGuardOptions([
+      "--pm",
+      "pnpm",
+      "--workspace",
+      "web",
+      "--config",
+      ".npmrc",
+      "--prefix",
+      "/tmp/app",
+      "lodash",
+    ]);
+
+    expect(directPackageSpecs(args)).toEqual(["lodash"]);
+  });
+
+  test("direct review specs skip equals-form package-manager options", () => {
+    const args = stripGuardOptions([
+      "--pm=bun",
+      "--workspace=web",
+      "--config=.npmrc",
+      "--prefix=/tmp/app",
+      "react",
+    ]);
+
+    expect(directPackageSpecs(args)).toEqual(["react"]);
   });
 
   test("package manager self-updates are not guarded package operations", () => {
