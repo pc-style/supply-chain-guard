@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import type { Verdict } from "./verdict";
 
 export type Risk = "low" | "medium" | "high";
 
@@ -55,6 +56,7 @@ export type Report = {
     findingCount: number;
     installAllowed: boolean;
   };
+  verdict: Verdict;
   findings: Finding[];
   agentReviews?: AgentReview[];
   policy?: ReportPolicy;

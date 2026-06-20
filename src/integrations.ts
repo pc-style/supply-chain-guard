@@ -211,7 +211,10 @@ export function agentReviewPrompt(
     `Report path: ${relative(ROOT, reportPath)}`,
     `Target: ${report.target}`,
     `Kind: ${report.kind}`,
-    `Risk: ${report.summary.risk}`,
+    `Decision: ${report.verdict.verdict}`,
+    `Confidence: ${report.verdict.confidence}`,
+    `Install allowed: ${report.verdict.installAllowed}`,
+    `Primary reason: ${report.verdict.primaryReason}`,
     "",
     "```json",
     JSON.stringify(normalizedReviewSummary(report), null, 2),
@@ -233,33 +236,11 @@ function sanitizeAgentStderr(stderr: string) {
 }
 
 function normalizedReviewSummary(report: Report) {
-  const high = report.findings.filter((f) => f.severity === "high");
-  const medium = report.findings.filter((f) => f.severity === "medium");
-  const minified = report.findings.filter((f) => f.id.endsWith(".minified"));
   return {
     target: report.target,
     kind: report.kind,
     generatedAt: report.generatedAt,
-    decisionBasis: {
-      verdict: report.summary.installAllowed
-        ? report.summary.risk === "medium"
-          ? "manual-risk-accepted"
-          : "allow"
-        : "block",
-      installAllowed: report.summary.installAllowed,
-      risk: report.summary.risk,
-      findingCount: report.summary.findingCount,
-      why: report.summary.installAllowed
-        ? `No high-severity findings (${medium.length} medium, ${report.findings.filter((f) => f.severity === "low").length} low).`
-        : `${high.length} high-severity finding(s) block install.`,
-      skippedChecks: minified.map(
-        (f) =>
-          `Minified file skipped by static scanner: ${f.id.replace(/^file\./, "").replace(/\.minified$/, "")}`,
-      ),
-      nextAction: minified.length
-        ? "Inspect original source/package contents for minified files."
-        : "Use findings and intelligence to decide.",
-    },
+    decision: report.verdict,
     artifact: report.artifact,
     intelligence: normalizedIntelligence(report),
     findings: report.findings.map((f) => ({

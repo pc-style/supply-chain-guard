@@ -1,6 +1,7 @@
-import { mkdir, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { appendFile, mkdir, readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, delimiter, join, resolve } from "node:path";
+import { basename, delimiter, dirname, join, resolve } from "node:path";
 import {
   freshnessWindowHoursForPreset,
   scanNpm,
@@ -18,7 +19,9 @@ import type {
 import {
   CACHE_DIR,
   CLI_ENTRY,
+  CONFIG_DIR,
   CONFIG_ENV_PATH,
+  CONFIG_PATH,
   commandExists,
   normalizeAgentMode,
   normalizePolicyPreset,
@@ -158,13 +161,21 @@ const DOCTOR_FIX_HINTS: Record<string, string> = {
     "scguard config  # or visit socket.dev to get a key",
 };
 
-export async function doctorCommand() {
-  const checks: Array<{ name: string; ok: boolean; detail: string }> = [];
+export type DoctorCheck = {
+  name: string;
+  ok: boolean;
+  detail: string;
+  fix?: string;
+};
+
+export async function collectDoctorChecks(): Promise<DoctorCheck[]> {
+  const checks: DoctorCheck[] = [];
   for (const bin of ["bun", "git", "tar", "unzip"]) {
     checks.push({
       name: `dependency: ${bin}`,
       ok: await commandExists(bin),
       detail: `${bin} required`,
+      fix: DOCTOR_FIX_HINTS[`dependency: ${bin}`],
     });
   }
   for (const bin of ["codex", "pi"]) {
@@ -183,18 +194,21 @@ export async function doctorCommand() {
     detail: path.includes(localBin)
       ? localBin
       : `${localBin} missing from PATH`,
+    fix: DOCTOR_FIX_HINTS["~/.local/bin on PATH"],
   });
   const hookActive = !!Bun.env.SCGUARD_SHELL_HOOK_ACTIVE;
   checks.push({
     name: `shell hook active`,
     ok: hookActive,
     detail: hookActive ? "active" : 'run: eval "$(scguard shell-hook)"',
+    fix: DOCTOR_FIX_HINTS["shell hook active"],
   });
   const tokenSet = !!Bun.env.SOCKET_API_KEY;
   checks.push({
     name: `SOCKET_API_KEY configured`,
     ok: tokenSet,
     detail: tokenSet ? "set" : "unset (Socket scoring disabled)",
+    fix: DOCTOR_FIX_HINTS["SOCKET_API_KEY configured"],
   });
   const config = await readConfig();
   checks.push({
@@ -209,21 +223,40 @@ export async function doctorCommand() {
   });
   checks.push({ name: `project root`, ok: true, detail: ROOT });
   checks.push({ name: `reports directory`, ok: true, detail: REPORT_DIR });
+  return checks;
+}
+
+export async function doctorCommand(args: string[] = []) {
+  const json = args.includes("--json");
+  const fix = args.includes("--fix");
+  const installHook = args.includes("--install-hook");
+  const fixes = fix ? await applyDoctorFixes({ installHook }) : [];
+  const checks = await collectDoctorChecks();
+  const allOk = checks.every((check) => check.ok);
+
+  if (json) {
+    console.log(JSON.stringify({ ok: allOk, fixed: fixes, checks }, null, 2));
+    return;
+  }
 
   console.log(header("scguard doctor"));
-  let allOk = true;
+  if (fix && fixes.length > 0) {
+    for (const applied of fixes) {
+      console.log(
+        `  ${style.check()} ${c.green("fixed", true)} ${c.white(applied)}`,
+      );
+    }
+    console.log("");
+  }
   for (const check of checks) {
     const marker = check.ok
       ? `${style.check()} ${c.green("ok  ", true)}`
       : `${style.cross()} ${c.amber("warn", true)}`;
-    if (!check.ok) allOk = false;
     console.log(
       `  ${marker}  ${c.white(check.name.padEnd(28))} ${c.dim(check.detail)}`,
     );
-    if (!check.ok && DOCTOR_FIX_HINTS[check.name]) {
-      console.log(
-        `           ${c.dim(`fix: ${DOCTOR_FIX_HINTS[check.name]}`)}`,
-      );
+    if (!check.ok && check.fix) {
+      console.log(`           ${c.dim(`fix: ${check.fix}`)}`);
     }
   }
   console.log("");
@@ -231,9 +264,171 @@ export async function doctorCommand() {
     console.log(`${style.ok()}  ${c.gray("all checks passed.")}`);
   } else {
     console.log(
-      `${c.amber("note", true)} ${c.gray("some checks failed. fix the items above for the smoothest experience.")}`,
+      `${c.amber("note", true)} ${c.gray("some checks failed. run scguard setup or scguard doctor --fix for safe repairs; add --install-hook to persist shell-hook setup.")}`,
     );
   }
+}
+
+async function applyDoctorFixes(
+  options: { installHook?: boolean } = {},
+): Promise<string[]> {
+  const fixed: string[] = [];
+  await mkdir(CONFIG_DIR, { recursive: true });
+  if (!existsSync(CONFIG_PATH)) {
+    await writeConfig(await readConfigFile());
+    fixed.push(`created config ${CONFIG_PATH}`);
+  }
+  const profile = defaultShellProfile();
+  if (options.installHook && profile && !(await profileHasHook(profile))) {
+    try {
+      await appendFile(
+        profile,
+        `\n# Supply Chain Guard shell hook\n[ -f "${CONFIG_ENV_PATH}" ] && source "${CONFIG_ENV_PATH}"\neval "$(scguard shell-hook)"\n`,
+      );
+      fixed.push(`added shell hook to ${profile}`);
+    } catch (err) {
+      fixed.push(
+        `could not add shell hook to ${profile}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+  return fixed;
+}
+
+function defaultShellProfile(): string | undefined {
+  const shell = basename(Bun.env.SHELL ?? "");
+  const home = homedir();
+  if (shell === "zsh") return join(home, ".zshrc");
+  if (shell === "bash") return join(home, ".bashrc");
+  return undefined;
+}
+
+async function profileHasHook(profile: string) {
+  try {
+    const text = await readFile(profile, "utf8");
+    return (
+      text.includes("scguard shell-hook") ||
+      text.includes("SCGUARD_SHELL_HOOK_ACTIVE")
+    );
+  } catch {
+    return false;
+  }
+}
+
+export async function statusCommand() {
+  const config = await readConfig();
+  const checks = await collectDoctorChecks();
+  const hookActive =
+    checks.find((check) => check.name === "shell hook active")?.ok ?? false;
+  const requiredOk = checks
+    .filter((check) => check.name.startsWith("dependency:"))
+    .every((check) => check.ok);
+  const socket = checks.find(
+    (check) => check.name === "SOCKET_API_KEY configured",
+  );
+  console.log(header("scguard status"));
+  console.log(
+    `  ${hookActive ? style.check() : style.cross()} ${c.white("current shell:")} ${hookActive ? c.green("guarded", true) : c.amber("not guarded", true)}`,
+  );
+  console.log(
+    `  ${requiredOk ? style.check() : style.cross()} ${c.white("dependencies:")} ${requiredOk ? c.green("ready", true) : c.amber("missing required tools", true)}`,
+  );
+  console.log(`  ${c.gray("preset:")} ${c.white(config.preset)}`);
+  console.log(
+    `  ${c.gray("safe resolver:")} ${c.white(config.safeResolver)} ${c.dim("(suggest-only; never rewrites installs)")}`,
+  );
+  console.log(`  ${c.gray("agent review:")} ${c.white(config.agentReview)}`);
+  console.log(
+    `  ${c.gray("Socket:")} ${socket?.ok ? c.green("token present", true) : c.amber("token missing", true)}`,
+  );
+  console.log(`  ${c.gray("reports:")} ${REPORT_DIR}`);
+  console.log("");
+  if (!hookActive) {
+    console.log(
+      `${c.amber("action", true)} ${c.gray('run `eval "$(scguard shell-hook)"` for this shell, or `scguard setup --install-hook --yes` to install it persistently.')}`,
+    );
+  } else {
+    console.log(
+      `${style.ok()}  ${c.gray("package manager commands in this shell are routed through scguard.")}`,
+    );
+  }
+}
+
+export async function setupCommand(args: string[]) {
+  const yes = args.includes("--yes");
+  const noHook = args.includes("--no-hook");
+  const installHook =
+    args.includes("--install-hook") ||
+    (!yes &&
+      !noHook &&
+      promptYesNo("Install the shell hook into your shell profile?", false));
+  const config = await readConfigFile();
+  const preset = readOption(args, "--preset");
+  const safeResolver = readOption(args, "--safe-resolver");
+  const agent = readOption(args, "--agent");
+  if (preset) config.preset = normalizePolicyPreset(preset);
+  else if (!yes) config.preset = await presetConfigTui(config.preset);
+  if (safeResolver) {
+    config.safeResolver = normalizeSafeResolverMode(safeResolver);
+  } else if (!yes) {
+    config.safeResolver = promptYesNo(
+      `Keep Safe Resolver suggestions enabled (${config.safeResolver})?`,
+      config.safeResolver !== "off",
+    )
+      ? "suggest"
+      : "off";
+  }
+  if (agent) config.agentReview = normalizeAgentMode(agent);
+  else if (!yes) config.agentReview = await agentConfigTui(config.agentReview);
+  await writeConfig(config);
+
+  const fixes: string[] = [];
+  fixes.push(
+    ...(await applyDoctorFixes({ installHook: installHook && !noHook })),
+  );
+  const checks = await collectDoctorChecks();
+
+  console.log(header("scguard setup"));
+  console.log(
+    `${style.check()} ${c.green("config", true)} ${c.gray(CONFIG_PATH)}`,
+  );
+  console.log(`  ${c.gray("preset:")} ${c.white(config.preset)}`);
+  console.log(
+    `  ${c.gray("safe resolver:")} ${c.white(config.safeResolver)} ${c.dim("(suggest-only)")}`,
+  );
+  console.log(`  ${c.gray("agent review:")} ${c.white(config.agentReview)}`);
+  if (fixes.length) {
+    for (const fixed of fixes)
+      console.log(
+        `${style.check()} ${c.green("fixed", true)} ${c.gray(fixed)}`,
+      );
+  }
+  if (noHook || !installHook)
+    console.log(
+      `${c.amber("hook", true)} ${c.gray(noHook ? "skipped by --no-hook" : "not installed; use --install-hook to persist it")}`,
+    );
+  const requiredOk = checks
+    .filter((check) => check.name.startsWith("dependency:"))
+    .every((check) => check.ok);
+  const hookActive =
+    checks.find((check) => check.name === "shell hook active")?.ok ?? false;
+  console.log("");
+  console.log(
+    `${requiredOk ? style.check() : style.cross()} ${c.white("dependencies")} ${requiredOk ? c.green("ready", true) : c.amber("missing", true)}`,
+  );
+  console.log(
+    `${hookActive ? style.check() : c.amber("!", true)} ${c.white("current shell")} ${hookActive ? c.green("guarded", true) : c.amber("not guarded until you reload/eval the hook", true)}`,
+  );
+  console.log(
+    `${c.gray("next:")} ${hookActive ? "scguard review <package>" : 'eval "$(scguard shell-hook)"'}`,
+  );
+}
+
+function promptYesNo(question: string, defaultYes: boolean) {
+  const suffix = defaultYes ? "Y/n" : "y/N";
+  const answer = prompt(`${question} [${suffix}] `)?.trim().toLowerCase();
+  if (!answer) return defaultYes;
+  return answer === "y" || answer === "yes";
 }
 
 export async function cleanCommand(args: string[]) {
@@ -449,6 +644,7 @@ export interface LockfileScanSummary {
   warnings: { name: string; version: string; reportPath: string }[];
   blockInstall: boolean;
   baselineUpdated: boolean;
+  planOnly?: boolean;
 }
 
 type PlannedLockfileScan = {
@@ -532,7 +728,13 @@ export async function scanLockfile(
     warnings: [],
     blockInstall: false,
     baselineUpdated: false,
+    planOnly: args.includes("--plan"),
   };
+
+  if (summary.planOnly) {
+    printLockfilePlan(plan, baseline, detected.path);
+    return summary;
+  }
 
   let cursor = 0;
   let completed = 0;
@@ -656,6 +858,48 @@ export async function scanLockfile(
   }
 
   return summary;
+}
+
+function printLockfilePlan(
+  plan: { selected: PlannedLockfileScan[]; skipped: SkippedLockfileEntry[] },
+  baseline: LockfileBaseline | null,
+  lockfilePath: string,
+) {
+  console.log("");
+  console.log(header("Lockfile plan preview"));
+  console.log(
+    `  ${c.gray("would scan:")} ${c.white(String(plan.selected.length))} ${c.dim("package(s)")}`,
+  );
+  console.log(
+    `  ${c.gray("would skip:")} ${c.white(String(plan.skipped.length))} ${c.dim("package(s)")}`,
+  );
+  console.log(
+    `  ${c.gray("baseline:")} ${baseline ? `${baseline.entries.length} entries from ${baseline.generatedAt}` : "none; first guarded bare install scans according to preset"}`,
+  );
+  console.log(
+    `  ${c.gray("analysis:")} ${c.white("not run")} ${c.dim("(--plan only; no tarballs downloaded)")}`,
+  );
+  for (const selected of plan.selected.slice(0, 12)) {
+    console.log(
+      `    ${c.amber("scan", true)} ${c.white(`${selected.entry.name}@${selected.entry.version}`)} ${c.dim(selected.reason)}`,
+    );
+  }
+  if (plan.selected.length > 12)
+    console.log(
+      `    ${c.dim(`... and ${plan.selected.length - 12} more selected`)}`,
+    );
+  for (const skipped of plan.skipped.slice(0, 8)) {
+    console.log(
+      `    ${c.gray("skip")} ${c.white(`${skipped.entry.name}@${skipped.entry.version}`)} ${c.dim(skipped.reason)}`,
+    );
+  }
+  if (plan.skipped.length > 8)
+    console.log(
+      `    ${c.dim(`... and ${plan.skipped.length - 8} more skipped`)}`,
+    );
+  console.log(
+    `  ${c.gray("next:")} scguard scan-lockfile ${dirname(lockfilePath)}`,
+  );
 }
 
 export function lockfileBaselinePath(cwd: string) {

@@ -10,7 +10,9 @@ import {
   reviewOrInstall,
   scanLockfileCommand,
   selfTest,
+  setupCommand,
   shellHook,
+  statusCommand,
 } from "./commands";
 import type { Report } from "./core";
 import { ensureDirs, readJson, readOption, requireArg } from "./core";
@@ -23,6 +25,7 @@ import { isOfflineMode } from "./offline";
 import { emitReport, maybeRunConfiguredAgentReview } from "./reporting";
 import { skillCommand } from "./skill-install";
 import { banner, c, style } from "./ui";
+import { buildVerdict } from "./verdict";
 
 async function main() {
   const cliArgs = normalizeArgv(Bun.argv);
@@ -35,6 +38,8 @@ async function main() {
   const SILENT_CMDS = new Set([
     "shell-hook",
     "doctor",
+    "status",
+    "setup",
     "--help",
     "-h",
     "--version",
@@ -124,7 +129,17 @@ async function main() {
   }
 
   if (cmd === "doctor") {
-    await doctorCommand();
+    await doctorCommand(args);
+    return;
+  }
+
+  if (cmd === "status") {
+    await statusCommand();
+    return;
+  }
+
+  if (cmd === "setup") {
+    await setupCommand(args);
     return;
   }
 
@@ -164,7 +179,7 @@ async function main() {
       "agent-prompt requires a report path",
     );
     const agent = readOption(args, "--agent") ?? "codex";
-    const report = await readJson<Report>(reportPath);
+    const report = await readReportForAgent(reportPath);
     const promptPath = await writeAgentPrompt(report, agent);
     console.log(promptPath);
     return;
@@ -175,7 +190,7 @@ async function main() {
       args[0],
       "agent-review requires a report path",
     );
-    const report = await readJson<Report>(reportPath);
+    const report = await readReportForAgent(reportPath);
     const agentMode = await resolveAgentMode(args);
     const agents = agentMode.length > 0 ? agentMode : ["codex" as const];
     const reviews = await runAgentReviews(report, reportPath, agents);
@@ -246,6 +261,16 @@ async function help() {
   console.log("");
   section("Common");
   item(
+    "scguard setup",
+    "[--yes] [--install-hook] [--preset quiet|default|strict-ci|enterprise|advisory] [--safe-resolver off|suggest] [--agent none|codex|pi|both] [--no-hook]",
+    "Configure policy, Safe Resolver, agent defaults, and optionally install persistent shell-hook protection.",
+  );
+  item(
+    "scguard status",
+    "",
+    "Show whether this shell is guarded and summarize protection state.",
+  );
+  item(
     "scguard review",
     "<package[@version]> [--agent codex|pi|both] [--sbom] [--offline]",
     "Download, stage, and analyze a package without installing it.",
@@ -254,6 +279,11 @@ async function help() {
     "scguard install",
     "<package[@version]> [--dev] [--pm bun|npm|pnpm|yarn] [--agent codex|pi|both] [--sbom] [--offline]",
     "Review, then install only after the gate (and any agent review) passes. Direct package installs stay strict even when the app preset is more relaxed.",
+  );
+  item(
+    "scguard scan-lockfile",
+    "[path] [--plan]",
+    "Preview or scan the current lockfile selection for bare installs.",
   );
   item(
     "scguard scan-vsix",
@@ -290,11 +320,6 @@ async function help() {
   item("scguard version", "", "Print the installed version.");
 
   section("Advanced");
-  item(
-    "scguard scan-lockfile",
-    "[dir]",
-    "Scan lockfile packages using the active preset policy. Used by the shell hook for bare 'install'.",
-  );
   item(
     "scguard scan-npm",
     "<package[@version]> [--json]",
@@ -363,3 +388,12 @@ main().catch((error) => {
   console.error(`${style.blocked("error:")} ${c.white(msg)}`);
   process.exit(1);
 });
+
+async function readReportForAgent(reportPath: string): Promise<Report> {
+  const report = await readJson<Report>(reportPath);
+  if (!report.verdict) {
+    report.verdict = buildVerdict(report);
+    report.summary.installAllowed = report.verdict.installAllowed;
+  }
+  return report;
+}

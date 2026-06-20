@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdtemp, readdir, stat } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, join, resolve, sep } from "node:path";
 import type {
   Finding,
   PackageAgeResult,
@@ -13,7 +13,6 @@ import type {
 } from "./core";
 import {
   CACHE_DIR,
-  commandExists,
   debug,
   objectValue,
   readActiveAdvisory,
@@ -30,6 +29,7 @@ import {
   checkTyposquat,
   verifyNpmSignatures,
 } from "./integrations";
+import { buildVerdict } from "./verdict";
 
 const INSTALL_SCRIPTS = new Set([
   "preinstall",
@@ -134,7 +134,7 @@ export async function scanNpm(
     );
   }
   debug(`resolving ${spec}`);
-  const meta = await resolveNpm(spec);
+  const meta = await resolveNpm(spec, { offline: options.offline });
   const resolvedName = String(meta.name);
   const version = String(meta.version);
   const tarball = options.pinnedTarball ?? String(meta.dist.tarball);
@@ -225,6 +225,11 @@ async function scanNpmArtifact(context: {
   if (await Bun.file(artifactPath).exists()) {
     debug(`cache hit ${artifactPath}`);
   } else {
+    if (offline) {
+      throw new Error(
+        `Offline mode: no cached artifact found for ${name}@${version}. Re-run without --offline once to populate cache.`,
+      );
+    }
     debug(`downloading ${tarball}`);
     await download(tarball, artifactPath);
   }
@@ -276,8 +281,9 @@ async function scanNpmArtifact(context: {
           "Do not install. The downloaded tarball differs from the lockfile/registry digest — possible tampering.",
       });
       report.summary.risk = "high";
-      report.summary.installAllowed = false;
       report.summary.findingCount = report.findings.length;
+      report.verdict = buildVerdict(report);
+      report.summary.installAllowed = report.verdict.installAllowed;
     }
   }
   return report;
@@ -373,7 +379,7 @@ export async function analyzeDirectory(
   const pkgPath = join(dir, "package.json");
   const pkg = await readJson<Record<string, unknown>>(pkgPath);
   const findings: Finding[] = [];
-  inspectPackageJson(pkg, kind, findings);
+  await inspectPackageJson(pkg, kind, dir, findings);
   inspectIntelligence(intelligence, findings);
   await inspectFiles(dir, findings);
   const artifact = artifactPath
@@ -395,8 +401,8 @@ export async function analyzeDirectory(
         safeResolver: config.safeResolver,
         scanReason: "direct-review",
       };
-  return {
-    schemaVersion: 1,
+  const reportWithoutVerdict = {
+    schemaVersion: 1 as const,
     target,
     kind,
     generatedAt: new Date().toISOString(),
@@ -414,6 +420,9 @@ export async function analyzeDirectory(
     findings,
     policy,
   };
+  const verdict = buildVerdict(reportWithoutVerdict);
+  reportWithoutVerdict.summary.installAllowed = verdict.installAllowed;
+  return { ...reportWithoutVerdict, verdict };
 }
 
 function inspectIntelligence(
@@ -553,9 +562,10 @@ function inspectIntelligence(
   }
 }
 
-function inspectPackageJson(
+async function inspectPackageJson(
   pkg: Record<string, unknown>,
   kind: "npm" | "npm-stage" | "vsix",
+  dir: string,
   findings: Finding[],
 ) {
   const scripts = objectValue(pkg.scripts);
@@ -573,6 +583,9 @@ function inspectPackageJson(
       });
     }
     inspectText(`script.${name}`, script, findings, true);
+    if (INSTALL_SCRIPTS.has(name)) {
+      await inspectInstallReachableFiles(dir, name, script, findings);
+    }
   }
 
   const bins = pkg.bin;
@@ -623,6 +636,57 @@ function inspectPackageJson(
         "Use an agent or manual review to inspect newly introduced transitive risk.",
     });
   }
+}
+
+async function inspectInstallReachableFiles(
+  dir: string,
+  scriptName: string,
+  script: string,
+  findings: Finding[],
+) {
+  const root = resolve(dir);
+  for (const rel of referencedLocalScriptFiles(script)) {
+    const path = resolve(dir, rel);
+    if (path !== root && !path.startsWith(`${root}${sep}`)) continue;
+    const s = await stat(path).catch(() => null);
+    if (!s?.isFile() || s.size > 300_000) continue;
+    const text = await Bun.file(path)
+      .text()
+      .catch(() => "");
+    if (!text) continue;
+    findings.push({
+      id: `script.${scriptName}.install-reachable.${rel}`,
+      title: "Lifecycle script reaches local executable file",
+      severity: "medium",
+      evidence: `${scriptName} runs ${rel}`,
+      recommendation:
+        "Treat findings in this file as install-time behavior because lifecycle hooks can execute it during package installation.",
+    });
+    inspectText(
+      `script.${scriptName}.install-reachable.${rel}`,
+      stripComments(text).slice(0, 300_000),
+      findings,
+      true,
+      isMinified(text),
+    );
+  }
+}
+
+export function referencedLocalScriptFiles(script: string): string[] {
+  const refs = new Set<string>();
+  const commandPatterns = [
+    /(?:^|[&;|\s])(?:node|bun|bash|sh)\s+(["']?)(\.?\.?\/[A-Za-z0-9_./-]+\.(?:js|cjs|mjs|sh))\1/gi,
+    /(?:^|[&;|\s])(?:node|bun|bash|sh)\s+(["']?)([A-Za-z0-9_./-]+\.(?:js|cjs|mjs|sh))\1/gi,
+  ];
+  for (const pattern of commandPatterns) {
+    for (const match of script.matchAll(pattern)) {
+      const ref = match[2]?.replace(/^\.\//, "");
+      if (!ref || ref.startsWith("../") || ref.startsWith("/")) continue;
+      if (ref.includes("node_modules/")) continue;
+      refs.add(ref);
+    }
+  }
+  return [...refs];
 }
 
 async function inspectFiles(dir: string, findings: Finding[]) {
@@ -735,29 +799,17 @@ async function verifyIntegrity(
   return actual === expectedB64;
 }
 
-export async function resolveNpm(spec: string): Promise<Record<string, any>> {
-  // Try npm view first — it handles workspace:, git deps, dist-tags, and all semver ranges.
-  if (await commandExists("npm")) {
-    try {
-      const proc = Bun.spawn(["npm", "view", spec, "--json"], {
-        stdout: "pipe",
-        stderr: "ignore",
-      });
-      const text = await new Response(proc.stdout).text();
-      const code = await proc.exited;
-      if (code === 0 && text.trim()) {
-        const data = JSON.parse(text) as Record<string, any>;
-        if (data.name && data.version && data.dist?.tarball) return data;
-      }
-    } catch {
-      // fall through to direct registry lookup
-    }
-  }
-  // Direct registry HTTP fallback (no npm required).
+export async function resolveNpm(
+  spec: string,
+  options: { offline?: boolean } = {},
+): Promise<Record<string, any>> {
+  // Direct registry HTTP resolution is the normal path. Bun.semver handles
+  // registry versions/ranges without depending on the npm CLI.
   const { name, version } = parsePackageSpec(spec);
   if (version && !isRegistryVersionSpec(version)) {
     throw new Error(`Cannot resolve non-registry version spec: ${version}`);
   }
+  if (options.offline) return resolveNpmFromCache(name, version, spec);
   const res = await fetch(
     `https://registry.npmjs.org/${encodeURIComponent(name).replace("%40", "@")}`,
   );
@@ -777,6 +829,40 @@ export async function resolveNpm(spec: string): Promise<Record<string, any>> {
     );
   }
   return meta;
+}
+
+async function resolveNpmFromCache(
+  name: string,
+  requested: string | undefined,
+  spec: string,
+): Promise<Record<string, any>> {
+  const safeName = name.replaceAll("/", "_").replaceAll("@", "");
+  const prefix = `${safeName}-`;
+  const cached = (await readdir(CACHE_DIR).catch(() => []))
+    .filter((entry) => entry.startsWith(prefix) && entry.endsWith(".tgz"))
+    .map((entry) => ({
+      file: entry,
+      version: entry.slice(prefix.length, -".tgz".length),
+    }))
+    .filter(
+      (entry) =>
+        !requested ||
+        entry.version === requested ||
+        Bun.semver.satisfies(entry.version, requested),
+    )
+    .sort((a, b) => Bun.semver.order(a.version, b.version));
+  const selected = cached[cached.length - 1];
+  if (!selected) {
+    throw new Error(
+      `Offline mode: no cached registry artifact found for ${spec}. Re-run without --offline once, or provide an exact cached version.`,
+    );
+  }
+  const tarball = join(CACHE_DIR, selected.file);
+  return {
+    name,
+    version: selected.version,
+    dist: { tarball },
+  };
 }
 
 export function isRegistryVersionSpec(version: string): boolean {

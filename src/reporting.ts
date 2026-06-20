@@ -8,6 +8,7 @@ import {
 } from "./integrations";
 import { buildCycloneDxSbom, sbomPathFor } from "./sbom";
 import { blockedLine, c, header, meta, okLine, riskRow, riskWord } from "./ui";
+import type { Verdict } from "./verdict";
 
 export const REPORT_SCHEMA_URL =
   "https://raw.githubusercontent.com/pc-style/supply-chain-guard/main/docs/report-schema.json";
@@ -48,7 +49,27 @@ function serializeReport(report: Report): Record<string, unknown> {
 }
 
 function renderHumanReport(report: Report, jsonPath: string) {
-  console.log(header("Supply Chain Guard Report"));
+  const verdict = report.verdict;
+  console.log(header("Supply Chain Guard Decision"));
+  meta("decision", decisionLabel(verdict.verdict));
+  meta("main reason", verdict.primaryReason);
+  meta("confidence", verdict.confidence);
+  meta(
+    verdict.installAllowed ? "why allowed" : "why blocked",
+    verdict.installAllowed
+      ? "No policy-level blocking condition was found; review findings before trusting residual risk."
+      : "Policy verdict found blocking supply-chain risk in installable code or trusted intelligence.",
+  );
+  meta("next action", verdict.exactNextAction);
+  if (verdict.safeResolver) {
+    meta("safe resolver", verdict.safeResolver.reason);
+    if (typeof verdict.safeResolver.versionAgeHours === "number")
+      meta("resolved age", `${verdict.safeResolver.versionAgeHours}h`);
+    if (verdict.safeResolver.command)
+      meta("suggested command", verdict.safeResolver.command);
+  }
+
+  console.log(header("Report details"));
   meta("target", report.target);
   meta("kind", report.kind);
   meta("risk", riskWord(report.summary.risk));
@@ -93,9 +114,6 @@ function renderHumanReport(report: Report, jsonPath: string) {
   if (report.policy) {
     meta("preset", report.policy.preset);
     meta("scan-reason", report.policy.scanReason);
-    if (report.policy.safeResolverSuggestion) {
-      meta("safe-resolver", report.policy.safeResolverSuggestion.message);
-    }
   }
 
   if (report.findings.length > 0) {
@@ -116,15 +134,14 @@ function renderHumanReport(report: Report, jsonPath: string) {
   }
 
   console.log("");
-  if (report.summary.installAllowed) {
-    okLine(
-      `${report.target}: ${report.summary.risk} risk, ${report.summary.findingCount} finding(s) - install allowed.`,
+  if (verdict.verdict === "allow") {
+    okLine(`${report.target}: ${decisionLabel(verdict.verdict)}.`);
+  } else if (verdict.verdict === "review") {
+    console.log(
+      `${c.amber("review", true)} ${c.white(report.target)}: ${verdict.primaryReason}`,
     );
   } else {
-    blockedLine(
-      "install blocked.",
-      `${report.findings.filter((f) => f.severity === "high").length} high-risk issue(s) found.`,
-    );
+    blockedLine("install blocked.", verdict.primaryReason);
   }
   console.log(`  ${c.dim("json")} ${c.gray(jsonPath)}`);
   console.log(
@@ -132,19 +149,27 @@ function renderHumanReport(report: Report, jsonPath: string) {
   );
 }
 
+function decisionLabel(verdict: Verdict["verdict"]) {
+  if (verdict === "allow") return "allowed";
+  if (verdict === "review") return "review recommended";
+  return "blocked";
+}
+
 export function renderMarkdown(report: Report, reportPath: string) {
-  const basis = decisionBasis(report);
+  const basis = report.verdict;
   const lines = [
     `# Supply Chain Report: ${report.target}`,
     "",
     "## Decision basis",
     "",
-    `- Verdict: ${basis.verdict}`,
-    `- Why install is ${report.summary.installAllowed ? "allowed" : "blocked"}: ${basis.installReason}`,
-    `- Top risks: ${basis.topRisks.join("; ") || "none"}`,
+    `- Verdict: ${decisionLabel(basis.verdict)}`,
+    `- Confidence: ${basis.confidence}`,
+    `- Why install is ${basis.installAllowed ? "allowed" : "blocked"}: ${basis.primaryReason}`,
+    `- Categories: ${basis.categories.join("; ") || "none"}`,
+    `- Top risks: ${basis.topRisks.map((risk) => `${risk.severity}:${risk.category}:${risk.findingId ?? "policy"}`).join("; ") || "none"}`,
     `- Reassuring signals: ${basis.reassuringSignals.join("; ") || "none"}`,
-    `- Skipped/incomplete checks: ${basis.skippedChecks.join("; ") || "none"}`,
-    `- Next action: ${basis.nextAction}`,
+    `- Skipped/incomplete checks: ${basis.skippedIncompleteChecks.join("; ") || "none"}`,
+    `- Next action: ${basis.exactNextAction}`,
     "",
     "## Summary",
     "",
@@ -160,7 +185,10 @@ export function renderMarkdown(report: Report, reportPath: string) {
     "",
     `- Active preset: ${report.policy?.preset ?? "default"}`,
     `- Scan reason: ${report.policy?.scanReason ?? "direct-review"}`,
-    `- Safe resolver: ${report.policy?.safeResolverSuggestion?.message ?? (report.policy?.safeResolver ? report.policy.safeResolver : "off")}`,
+    `- Safe resolver: ${basis.safeResolver?.reason ?? report.policy?.safeResolverSuggestion?.message ?? (report.policy?.safeResolver ? report.policy.safeResolver : "off")}`,
+    ...(basis.safeResolver?.command
+      ? [`- Safe resolver command: ${basis.safeResolver.command}`]
+      : []),
     "",
     "## Intelligence",
     "",
@@ -183,34 +211,6 @@ export function renderMarkdown(report: Report, reportPath: string) {
     lines.push("");
   }
   return `${lines.join("\n")}\n`;
-}
-
-export function decisionBasis(report: Report) {
-  const high = report.findings.filter((f) => f.severity === "high");
-  const medium = report.findings.filter((f) => f.severity === "medium");
-  const minified = report.findings.filter((f) => f.id.endsWith(".minified"));
-  const verdict = report.summary.installAllowed
-    ? report.summary.risk === "medium"
-      ? "manual-risk-accepted"
-      : "allow"
-    : "block";
-  return {
-    verdict,
-    installReason: report.summary.installAllowed
-      ? `no high-severity findings were produced (${medium.length} medium, ${report.findings.filter((f) => f.severity === "low").length} low)`
-      : `${high.length} high-severity finding(s) require blocking`,
-    topRisks: [...high, ...medium]
-      .slice(0, 5)
-      .map((f) => `${f.severity}:${f.id}`),
-    reassuringSignals: reassuringSignals(report),
-    skippedChecks: skippedChecks(report, minified),
-    nextAction:
-      minified.length > 0
-        ? "Inspect original source/package contents for minified files before relying on static scan results."
-        : report.summary.installAllowed
-          ? "Proceed only if this risk profile is acceptable."
-          : "Do not install until findings are resolved.",
-  };
 }
 
 function intelligenceLines(report: Report) {
@@ -266,33 +266,6 @@ function uncheckedLines(report: Report) {
   return lines.length
     ? lines
     : ["- No skipped checks recorded by this report."];
-}
-
-function reassuringSignals(report: Report) {
-  const signals: string[] = [];
-  if (
-    report.intelligence.osv?.status === "checked" &&
-    !report.intelligence.osv.vulnerabilities?.length
-  )
-    signals.push("OSV returned 0 vulnerabilities");
-  if (report.intelligence.npmSignature?.status === "verified")
-    signals.push("npm provenance signature verified");
-  if (report.intelligence.typosquat?.exactMatch)
-    signals.push("package name exact-match in popularity baseline");
-  if (report.intelligence.packageAge?.status === "checked")
-    signals.push(
-      `package age ${report.intelligence.packageAge.packageAgeDays ?? "?"}d`,
-    );
-  return signals;
-}
-
-function skippedChecks(
-  report: Report,
-  _minified = report.findings.filter((f) => f.id.endsWith(".minified")),
-) {
-  return uncheckedLines(report)
-    .filter((line) => !line.includes("No skipped checks"))
-    .map((line) => line.replace(/^- /, ""));
 }
 
 function socketRiskComponents(rawScore: unknown) {
