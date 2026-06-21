@@ -563,6 +563,8 @@ function lockfileFailedScanError(summary: LockfileScanSummary): Error {
 
 export function classifyPackageCommand(command: string, args: string[]) {
   const base = basename(command);
+  const actionIndex = findActionIndex(args);
+  const sub = actionIndex === -1 ? undefined : args[actionIndex];
   if (base === "npm" && args[0] === "stage" && args[1] === "approve") {
     return {
       packageOperation: true,
@@ -580,7 +582,6 @@ export function classifyPackageCommand(command: string, args: string[]) {
       specs: args[index + 1] ? [args[index + 1]] : [],
     };
   }
-  const sub = args.find((arg) => !arg.startsWith("-"));
   // Package manager self-updates are not untrusted package operations.
   if (base === "bun" && sub === "upgrade") {
     return { packageOperation: false, kind: "npm" as const, action: sub, specs: [] };
@@ -591,7 +592,7 @@ export function classifyPackageCommand(command: string, args: string[]) {
   const installActions = new Set(["add", "install", "i", "update", "upgrade", "ci"]);
   const packageManagers = new Set(["bun", "npm", "pnpm", "yarn"]);
   const packageOperation = packageManagers.has(base) && !!sub && installActions.has(sub);
-  const specs = packageOperation ? extractSpecs(base, args) : [];
+  const specs = packageOperation ? extractSpecs(base, args, actionIndex) : [];
   return { packageOperation, kind: "npm" as const, action: sub ?? "run", specs };
 }
 
@@ -622,8 +623,17 @@ const VALUE_OPTIONS = new Set([
   "--scope",
 ]);
 
-function extractSpecs(base: string, args: string[]) {
-  const actionIndex = args.findIndex((arg) => !arg.startsWith("-"));
+function findActionIndex(args: string[]) {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (!arg.startsWith("-")) return i;
+    if (arg.includes("=")) continue;
+    if (VALUE_OPTIONS.has(arg)) i++;
+  }
+  return -1;
+}
+
+function extractSpecs(base: string, args: string[], actionIndex = findActionIndex(args)) {
   const rest = actionIndex === -1 ? [] : args.slice(actionIndex + 1);
   if (base === "npm" && (args[actionIndex] === "ci" || rest.length === 0)) return [];
   const specs: string[] = [];
