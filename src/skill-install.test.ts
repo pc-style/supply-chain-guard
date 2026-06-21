@@ -7,9 +7,12 @@ import {
 } from "./skill-install";
 
 describe("skill install", () => {
-  test("buildSkillsInstallCommand uses npx skills add", () => {
+  test("buildSkillsInstallCommand uses npx --package skills@latest", () => {
     expect(buildSkillsInstallCommand()).toEqual([
       "npx",
+      "--yes",
+      "--package",
+      "skills@latest",
       "skills",
       "add",
       DEFAULT_SKILL_SOURCE,
@@ -32,6 +35,9 @@ describe("skill install", () => {
   test("buildSkillsInstallCommand accepts a custom source", () => {
     expect(buildSkillsInstallCommand("./skills/scguard")).toEqual([
       "npx",
+      "--yes",
+      "--package",
+      "skills@latest",
       "skills",
       "add",
       "./skills/scguard",
