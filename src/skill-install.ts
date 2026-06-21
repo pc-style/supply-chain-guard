@@ -46,7 +46,7 @@ export async function skillCommand(args: string[]) {
 export async function runSkillInstall(args: string[]) {
   const dryRun = args.includes("--dry-run");
   readOption(args, "--project");
-  const installCwd = process.env.HOME ?? process.cwd();
+  const installCwd = skillInstallCwd();
   const source = readOption(args, "--skill-source") ?? DEFAULT_SKILL_SOURCE;
   const command = buildSkillsInstallCommand(source).join(" ");
 
@@ -78,6 +78,12 @@ export async function runSkillInstall(args: string[]) {
   }
   console.log(
     `${style.check()} ${c.green("installed", true)} ${c.white(DEFAULT_SKILL_NAME)} skill`,
+  );
+}
+
+export function skillInstallCwd(env = process.env) {
+  return (
+    env.HOME ?? env.USERPROFILE ?? env.TMPDIR ?? env.TEMP ?? env.TMP ?? "/tmp"
   );
 }
 
