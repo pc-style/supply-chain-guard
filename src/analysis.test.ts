@@ -62,6 +62,14 @@ describe("resolveNpmVersion", () => {
   test("missing version", () => {
     expect(resolveNpmVersion(versions, distTags, "9.9.9")).toBeUndefined();
   });
+  test("rejects protocol and url specifiers", () => {
+    expect(resolveNpmVersion(versions, distTags, "github:attacker/repo")).toBeUndefined();
+    expect(resolveNpmVersion(versions, distTags, "file:../pkg")).toBeUndefined();
+    expect(resolveNpmVersion(versions, distTags, "https://example.com/pkg.tgz")).toBeUndefined();
+  });
+  test("rejects unknown non-semver tag-like specifiers", () => {
+    expect(resolveNpmVersion(versions, distTags, "nonsense-tag")).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------

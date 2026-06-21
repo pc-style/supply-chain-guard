@@ -508,6 +508,7 @@ export function resolveNpmVersion(versions: string[], distTags: Record<string, s
   if (!requested) return distTags.latest;
   if (versions.includes(requested)) return requested;
   if (distTags[requested]) return distTags[requested];
+  if (!isValidNpmSemverRange(requested)) return undefined;
   const matches = versions
     .filter((v) => Bun.semver.satisfies(v, requested))
     .sort((a, b) => Bun.semver.order(a, b));
@@ -518,7 +519,18 @@ export function resolveNpmVersion(versions: string[], distTags: Record<string, s
 function versionMatchesRequested(version: string, requested: string, versions: string[], distTags: Record<string, string>): boolean {
   if (versions.includes(requested)) return version === requested;
   if (distTags[requested]) return version === distTags[requested];
+  if (!isValidNpmSemverRange(requested)) return false;
   return Bun.semver.satisfies(version, requested);
+}
+
+function isValidNpmSemverRange(requested: string): boolean {
+  const value = requested.trim();
+  if (!value) return false;
+  if (/^(?:npm:|workspace:|file:|git\+|github:|gitlab:|bitbucket:|https?:|ssh:|link:)/i.test(value)) return false;
+  if (/[\\/]/.test(value)) return false;
+  if (!/\d/.test(value)) return false;
+  if (!/^[0-9A-Za-z.*xX^~<>=|+\-\s]+$/.test(value)) return false;
+  return true;
 }
 
 type SemVer = { major: number; minor: number; patch: number; prerelease?: string };
