@@ -116,7 +116,7 @@ describe("security regressions", () => {
     expect(result.specs).toEqual(["lodash"]);
   });
 
-  test("direct install specs skip package-manager option values", () => {
+  test("direct install specs keep --config value as a scan target", () => {
     const args = stripGuardOptions([
       "--pm",
       "pnpm",
@@ -129,7 +129,23 @@ describe("security regressions", () => {
       "lodash",
     ]);
 
-    expect(directPackageSpecs(args)).toEqual(["lodash"]);
+    expect(directPackageSpecs(args)).toEqual([".npmrc", "lodash"]);
+  });
+
+  test("npm install --config does not hide the following package spec", () => {
+    expect(nonOptionTokens(["install", "--config", "evil-package"])).toEqual([
+      "install",
+      "evil-package",
+    ]);
+    const result = classifyPackageCommand("npm", [
+      "install",
+      "--config",
+      "evil-package",
+    ]);
+
+    expect(result.packageOperation).toBe(true);
+    expect(result.action).toBe("install");
+    expect(result.specs).toEqual(["evil-package"]);
   });
 
   test("direct review specs skip equals-form package-manager options", () => {
