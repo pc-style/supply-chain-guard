@@ -220,6 +220,10 @@ export async function guardCommand(args: string[]) {
   console.error(`${c.amber("scguard", true)} ${c.gray("this command can execute lifecycle code from untrusted packages.")}`);
 
   if (isBareInstall) {
+    const detected = detectLockfile(process.cwd());
+    if (detected?.kind === "npm") {
+      throw new Error("Blocked bare npm install/ci: package-lock/npm-shrinkwrap resolved artifacts are not yet verified. Use explicit package specs for guarded installs.");
+    }
     const summary = await scanLockfile(process.cwd(), args.slice(1));
     const allowScanFailures = Bun.env.SCGUARD_ALLOW_SCAN_FAILURES === "1";
     if (summary.failed.length > 0 && !allowScanFailures) throw lockfileFailedScanError(summary);
