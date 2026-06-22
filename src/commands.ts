@@ -878,7 +878,6 @@ export function directPackageSpecs(args: string[]): string[] {
 const VALUE_OPTIONS = new Set([
   "--prefix",
   "--registry",
-  "--config",
   "--tag",
   "--otp",
   "--access",
