@@ -1,4 +1,4 @@
-import { findProjectRoot, readOption } from "./core";
+import { readOption } from "./core";
 import { c, style } from "./ui";
 
 export const DEFAULT_SKILL_SOURCE = "pc-style/supply-chain-guard";
@@ -8,7 +8,18 @@ export function buildSkillsInstallCommand(
   source = DEFAULT_SKILL_SOURCE,
   skillName = DEFAULT_SKILL_NAME,
 ) {
-  return ["npx", "skills", "add", source, "-y", "--skill", skillName] as const;
+  return [
+    "npx",
+    "--yes",
+    "--package",
+    "skills@latest",
+    "skills",
+    "add",
+    source,
+    "-y",
+    "--skill",
+    skillName,
+  ] as const;
 }
 
 export async function skillCommand(args: string[]) {
@@ -34,8 +45,8 @@ export async function skillCommand(args: string[]) {
 
 export async function runSkillInstall(args: string[]) {
   const dryRun = args.includes("--dry-run");
-  const projectRoot =
-    readOption(args, "--project") ?? findProjectRoot(process.cwd());
+  readOption(args, "--project");
+  const installCwd = skillInstallCwd();
   const source = readOption(args, "--skill-source") ?? DEFAULT_SKILL_SOURCE;
   const command = buildSkillsInstallCommand(source).join(" ");
 
@@ -45,10 +56,21 @@ export async function runSkillInstall(args: string[]) {
   }
 
   const proc = Bun.spawn([...buildSkillsInstallCommand(source)], {
-    cwd: projectRoot,
+    cwd: installCwd,
     stdout: "inherit",
     stderr: "inherit",
-    env: process.env,
+    env: {
+      HOME: process.env.HOME,
+      PATH: process.env.PATH,
+      USERPROFILE: process.env.USERPROFILE,
+      SystemRoot: process.env.SystemRoot,
+      TMPDIR: process.env.TMPDIR,
+      TEMP: process.env.TEMP,
+      TMP: process.env.TMP,
+      NO_COLOR: process.env.NO_COLOR,
+      FORCE_COLOR: process.env.FORCE_COLOR,
+      CI: process.env.CI,
+    },
   });
   const exitCode = await proc.exited;
   if (exitCode !== 0) {
@@ -59,6 +81,12 @@ export async function runSkillInstall(args: string[]) {
   );
 }
 
+export function skillInstallCwd(env = process.env) {
+  return (
+    env.HOME ?? env.USERPROFILE ?? env.TMPDIR ?? env.TEMP ?? env.TMP ?? "/tmp"
+  );
+}
+
 function printSkillHelp() {
   console.log(
     `${c.amber("scguard skill", true)} — install the supply-chain-guard agent skill`,
@@ -66,7 +94,7 @@ function printSkillHelp() {
   console.log("");
   console.log(c.gray("Subcommands:"));
   console.log(
-    `  ${c.white("install", true)}   Run ${c.blue(`npx skills add ${DEFAULT_SKILL_SOURCE}`)}`,
+    `  ${c.white("install", true)}   Run ${c.blue(`npx --yes --package skills@latest skills add ${DEFAULT_SKILL_SOURCE}`)}`,
   );
   console.log("");
   console.log(c.amber("Examples:", true));
@@ -77,16 +105,16 @@ function printSkillHelp() {
 
 function printSkillInstallHelp() {
   console.log(
-    `${c.amber("scguard skill install", true)} — install via Vercel skills CLI`,
+    `${c.amber("scguard skill install", true)} — install via skills CLI`,
   );
   console.log("");
   console.log(
-    `Runs: ${c.blue(`npx skills add ${DEFAULT_SKILL_SOURCE} -y --skill ${DEFAULT_SKILL_NAME}`)}`,
+    `Runs: ${c.blue(`npx --yes --package skills@latest skills add ${DEFAULT_SKILL_SOURCE} -y --skill ${DEFAULT_SKILL_NAME}`)}`,
   );
   console.log("");
   console.log(c.gray("Options:"));
   console.log(
-    `  ${c.amber("--project".padEnd(16), true)} ${c.gray("Project root (default: detected from cwd)")}`,
+    `  ${c.amber("--project".padEnd(16), true)} ${c.gray("Accepted for compatibility; not used for installer execution")}`,
   );
   console.log(
     `  ${c.amber("--skill-source".padEnd(16), true)} ${c.gray(`Override skill source (default: ${DEFAULT_SKILL_SOURCE})`)}`,
