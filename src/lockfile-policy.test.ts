@@ -1,10 +1,12 @@
-import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { afterEach, describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   lockfileBaselinePath,
   planLockfileSelection,
+  scanLockfileCommand,
   shouldBlockLockfileInstall,
 } from "./commands";
 import { readLockfileBaseline, writeLockfileBaseline } from "./core";
@@ -15,6 +17,52 @@ function age(hours: number) {
 
 function ageError() {
   return { status: "error" as const, message: "registry unavailable" };
+}
+
+const originalCwd = process.cwd();
+const originalNoColor = Bun.env.SCGUARD_NO_COLOR;
+const originalPreset = Bun.env.SCGUARD_PRESET;
+
+afterEach(() => {
+  process.chdir(originalCwd);
+  restoreEnv("SCGUARD_NO_COLOR", originalNoColor);
+  restoreEnv("SCGUARD_PRESET", originalPreset);
+});
+
+function restoreEnv(name: string, value: string | undefined) {
+  if (value === undefined) {
+    delete Bun.env[name];
+  } else {
+    Bun.env[name] = value;
+  }
+}
+
+async function writeTestBunLock(dir: string) {
+  await writeFile(
+    join(dir, "bun.lock"),
+    `{
+  "lockfileVersion": 1,
+  "packages": {
+    "@scguard-plan/never-published-alpha": ["@scguard-plan/never-published-alpha@1.0.0", ""],
+    "scguard-plan-never-published-beta": ["scguard-plan-never-published-beta@2.0.0", ""]
+  }
+}
+`,
+  );
+}
+
+async function captureStdout(run: () => Promise<unknown>) {
+  const original = console.log;
+  const lines: string[] = [];
+  console.log = (...args: unknown[]) => {
+    lines.push(args.map(String).join(" "));
+  };
+  try {
+    await run();
+  } finally {
+    console.log = original;
+  }
+  return lines.join("\n");
 }
 
 describe("lockfile policy selection", () => {
@@ -145,6 +193,51 @@ describe("lockfile baseline persistence", () => {
       await writeLockfileBaseline(baseline, path);
       expect(await readLockfileBaseline(path)).toEqual(baseline);
     } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("scan-lockfile plan mode", () => {
+  test("previews a directory scan without scanning packages, writing reports, or updating baseline", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "scguard-plan-"));
+    Bun.env.SCGUARD_NO_COLOR = "1";
+    Bun.env.SCGUARD_PRESET = "default";
+    process.chdir(dir);
+    try {
+      await writeTestBunLock(dir);
+      let summary: Awaited<ReturnType<typeof scanLockfileCommand>> | undefined;
+      const output = await captureStdout(async () => {
+        summary = await scanLockfileCommand(["--plan", "--offline"]);
+      });
+
+      expect(summary).toBeDefined();
+      expect(summary?.selected).toBe(2);
+      expect(summary?.skipped).toBe(0);
+      expect(summary?.scanned).toBe(0);
+      expect(summary?.failed).toEqual([]);
+      expect(summary?.blocked).toEqual([]);
+      expect(summary?.warnings).toEqual([]);
+      expect(summary?.baselineUpdated).toBe(false);
+      expect(summary?.blockInstall).toBe(false);
+      expect(existsSync(join(dir, ".scguard", "lockfile-baseline.json"))).toBe(
+        false,
+      );
+      expect(existsSync(join(dir, ".scguard", "reports"))).toBe(false);
+      expect(output).toContain("selected: 2");
+      expect(output).toContain("skipped: 0");
+      expect(output).toContain(
+        "@scguard-plan/never-published-alpha@1.0.0 reason=policy",
+      );
+      expect(output).toContain(
+        "preview only; no package scans, reports, or baseline updates were run",
+      );
+      expect(output).toContain("next: scguard scan-lockfile .");
+      expect(output).not.toContain("scanned  2/2");
+      expect(output).not.toContain("baseline updated");
+      expect(output).not.toContain("packages could not be analyzed");
+    } finally {
+      process.chdir(originalCwd);
       await rm(dir, { recursive: true, force: true });
     }
   });

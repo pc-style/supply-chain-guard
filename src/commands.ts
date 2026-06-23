@@ -1,6 +1,6 @@
 import { mkdir, rm } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, delimiter, join, resolve } from "node:path";
+import { basename, delimiter, join, relative, resolve } from "node:path";
 import {
   freshnessWindowHoursForPreset,
   scanNpm,
@@ -500,26 +500,6 @@ export async function scanLockfile(
     ageResults,
   );
 
-  console.log(header(`scguard scan-lockfile  ${c.dim(detected.kind)}`));
-  console.log(`  ${c.gray("lockfile:")} ${c.white(detected.path)}`);
-  console.log(`  ${c.gray("preset:")} ${c.white(config.preset)}`);
-  console.log(`  ${c.gray("packages:")} ${c.white(String(entries.length))}`);
-  console.log(
-    `  ${c.gray("selected:")} ${c.white(String(plan.selected.length))}`,
-  );
-  console.log(
-    `  ${c.gray("skipped:")} ${c.white(String(plan.skipped.length))}`,
-  );
-  if (baseline) {
-    console.log(
-      `  ${c.gray("baseline:")} ${c.white(String(baseline.entries.length))} ${c.dim(`saved ${baseline.generatedAt}`)}`,
-    );
-  } else {
-    console.log(
-      `  ${c.gray("baseline:")} ${c.dim("none (full lockfile scan on first bare install)")}`,
-    );
-  }
-
   const summary: LockfileScanSummary = {
     detected,
     preset: config.preset,
@@ -533,6 +513,30 @@ export async function scanLockfile(
     blockInstall: false,
     baselineUpdated: false,
   };
+
+  console.log(header(`scguard scan-lockfile  ${c.dim(detected.kind)}`));
+  console.log(`  ${c.gray("lockfile:")} ${c.white(detected.path)}`);
+  console.log(`  ${c.gray("preset:")} ${c.white(config.preset)}`);
+  console.log(`  ${c.gray("packages:")} ${c.white(String(entries.length))}`);
+  console.log(
+    `  ${c.gray("selected:")} ${c.white(String(plan.selected.length))}`,
+  );
+  console.log(
+    `  ${c.gray("skipped:")} ${c.white(String(plan.skipped.length))}`,
+  );
+  if (args.includes("--plan")) {
+    printLockfilePlan(cwd, plan);
+    return summary;
+  }
+  if (baseline) {
+    console.log(
+      `  ${c.gray("baseline:")} ${c.white(String(baseline.entries.length))} ${c.dim(`saved ${baseline.generatedAt}`)}`,
+    );
+  } else {
+    console.log(
+      `  ${c.gray("baseline:")} ${c.dim("none (full lockfile scan on first bare install)")}`,
+    );
+  }
 
   let cursor = 0;
   let completed = 0;
@@ -656,6 +660,47 @@ export async function scanLockfile(
   }
 
   return summary;
+}
+
+function printLockfilePlan(
+  cwd: string,
+  plan: { selected: PlannedLockfileScan[]; skipped: SkippedLockfileEntry[] },
+) {
+  console.log("");
+  console.log(
+    `  ${c.amber("plan", true)} ${c.gray("preview only; no package scans, reports, or baseline updates were run")}`,
+  );
+  printLockfilePlanEntries("selected", plan.selected);
+  printLockfilePlanEntries("skipped", plan.skipped);
+  console.log(
+    `  ${c.gray("next:")} ${c.white(`scguard scan-lockfile ${formatLockfilePlanCwd(cwd)}`)}`,
+  );
+}
+
+function printLockfilePlanEntries(
+  label: "selected" | "skipped",
+  entries: Array<PlannedLockfileScan | SkippedLockfileEntry>,
+) {
+  if (entries.length === 0) {
+    console.log(`  ${c.gray(`${label} sample:`)} ${c.dim("none")}`);
+    return;
+  }
+  console.log(`  ${c.gray(`${label} sample:`)}`);
+  for (const item of entries.slice(0, 5)) {
+    console.log(
+      `    ${c.dim("-")} ${c.white(`${item.entry.name}@${item.entry.version}`)} ${c.dim(`reason=${item.reason}`)}`,
+    );
+  }
+  if (entries.length > 5) {
+    console.log(`    ${c.dim(`... and ${entries.length - 5} more`)}`);
+  }
+}
+
+function formatLockfilePlanCwd(cwd: string) {
+  const rel = relative(process.cwd(), cwd);
+  if (!rel) return ".";
+  if (!rel.startsWith("..") && !rel.startsWith("/")) return rel;
+  return cwd;
 }
 
 export function lockfileBaselinePath(cwd: string) {
