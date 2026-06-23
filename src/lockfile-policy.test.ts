@@ -232,7 +232,7 @@ describe("scan-lockfile plan mode", () => {
       expect(output).toContain(
         "preview only; no package scans, reports, or baseline updates were run",
       );
-      expect(output).toContain("next: scguard scan-lockfile .");
+      expect(output).toContain("next: scguard scan-lockfile . --offline");
       expect(output).not.toContain("scanned  2/2");
       expect(output).not.toContain("baseline updated");
       expect(output).not.toContain("packages could not be analyzed");

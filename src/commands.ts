@@ -525,7 +525,7 @@ export async function scanLockfile(
     `  ${c.gray("skipped:")} ${c.white(String(plan.skipped.length))}`,
   );
   if (args.includes("--plan")) {
-    printLockfilePlan(cwd, plan);
+    printLockfilePlan(cwd, plan, args);
     return summary;
   }
   if (baseline) {
@@ -665,6 +665,7 @@ export async function scanLockfile(
 function printLockfilePlan(
   cwd: string,
   plan: { selected: PlannedLockfileScan[]; skipped: SkippedLockfileEntry[] },
+  args: string[],
 ) {
   console.log("");
   console.log(
@@ -673,7 +674,7 @@ function printLockfilePlan(
   printLockfilePlanEntries("selected", plan.selected);
   printLockfilePlanEntries("skipped", plan.skipped);
   console.log(
-    `  ${c.gray("next:")} ${c.white(`scguard scan-lockfile ${formatLockfilePlanCwd(cwd)}`)}`,
+    `  ${c.gray("next:")} ${c.white(formatLockfilePlanCommand(cwd, args))}`,
   );
 }
 
@@ -694,6 +695,12 @@ function printLockfilePlanEntries(
   if (entries.length > 5) {
     console.log(`    ${c.dim(`... and ${entries.length - 5} more`)}`);
   }
+}
+
+function formatLockfilePlanCommand(cwd: string, args: string[]) {
+  const parts = ["scguard", "scan-lockfile", formatLockfilePlanCwd(cwd)];
+  if (args.includes("--offline")) parts.push("--offline");
+  return parts.join(" ");
 }
 
 function formatLockfilePlanCwd(cwd: string) {
