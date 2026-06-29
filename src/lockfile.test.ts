@@ -55,6 +55,82 @@ describe("parseNpm (lockfileVersion 3)", () => {
     ]);
   });
 
+  test("uses package metadata name for npm aliases", () => {
+    const text = JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        "node_modules/react-alias": {
+          name: "react",
+          version: "18.3.1",
+          resolved: "npm:react@18.3.1",
+        },
+      },
+    });
+    const entries = parseNpm(text);
+    expect(entries).toEqual([
+      {
+        name: "react",
+        version: "18.3.1",
+        resolved: "npm:react@18.3.1",
+      },
+    ]);
+  });
+
+  test("derives package name from npm alias resolved spec when metadata name is missing", () => {
+    const text = JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        "node_modules/react-alias": {
+          version: "18.3.1",
+          resolved: "npm:react@18.3.1",
+        },
+        "node_modules/scoped-alias": {
+          version: "2.0.0",
+          resolved: "npm:@scope/foo@2.0.0",
+        },
+      },
+    });
+    const entries = parseNpm(text);
+    expect(entries).toEqual([
+      {
+        name: "@scope/foo",
+        version: "2.0.0",
+        resolved: "npm:@scope/foo@2.0.0",
+      },
+      {
+        name: "react",
+        version: "18.3.1",
+        resolved: "npm:react@18.3.1",
+      },
+    ]);
+  });
+
+  test("normalizes npm alias entries from dependencies map", () => {
+    const text = JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        "node_modules/react-alias": {
+          version: "18.3.1",
+          resolved: "npm:react@18.3.1",
+        },
+      },
+      dependencies: {
+        "react-alias": {
+          version: "npm:react@18.3.1",
+          resolved: "https://registry.npmjs.org/react/-/react-18.3.1.tgz",
+        },
+      },
+    });
+    const entries = parseNpm(text);
+    expect(entries).toEqual([
+      {
+        name: "react",
+        version: "18.3.1",
+        resolved: "npm:react@18.3.1",
+      },
+    ]);
+  });
+
   test("falls back to nested dependencies (lockfileVersion 1)", () => {
     const text = JSON.stringify({
       lockfileVersion: 1,
