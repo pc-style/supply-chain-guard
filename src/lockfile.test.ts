@@ -55,6 +55,59 @@ describe("parseNpm (lockfileVersion 3)", () => {
     ]);
   });
 
+  test("uses package metadata name for aliased package entries", () => {
+    const text = JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        "node_modules/react-alias": {
+          name: "react",
+          version: "18.3.1",
+          resolved: "npm:react@18.3.1",
+        },
+      },
+    });
+    const entries = parseNpm(text);
+    expect(entries).toEqual([
+      { name: "react", version: "18.3.1", resolved: "npm:react@18.3.1" },
+    ]);
+  });
+
+  test("uses npm alias resolved identity when metadata name is absent", () => {
+    const text = JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        "node_modules/react-alias": {
+          version: "18.3.1",
+          resolved: "npm:react@18.3.1",
+        },
+        "node_modules/scope-alias": {
+          version: "1.0.0",
+          resolved: "npm:@scope/foo@1.0.0",
+        },
+      },
+    });
+    const entries = parseNpm(text);
+    expect(entries).toEqual([
+      {
+        name: "@scope/foo",
+        version: "1.0.0",
+        resolved: "npm:@scope/foo@1.0.0",
+      },
+      { name: "react", version: "18.3.1", resolved: "npm:react@18.3.1" },
+    ]);
+  });
+
+  test("keeps path fallback for ordinary package entries without metadata name", () => {
+    const text = JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        "node_modules/react-alias": { version: "18.3.1" },
+      },
+    });
+    const entries = parseNpm(text);
+    expect(entries).toEqual([{ name: "react-alias", version: "18.3.1" }]);
+  });
+
   test("falls back to nested dependencies (lockfileVersion 1)", () => {
     const text = JSON.stringify({
       lockfileVersion: 1,

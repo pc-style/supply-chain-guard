@@ -104,7 +104,10 @@ export function parseNpm(text: string): LockfileEntry[] {
       if (!path || path === "" || info?.link) continue;
       const version = info?.version;
       if (!version) continue;
-      const name = info.name ?? nameFromNodeModulesPath(path);
+      const name =
+        validPackageName(info.name) ??
+        nameFromNpmAliasResolved(info.resolved) ??
+        nameFromNodeModulesPath(path);
       if (!name) continue;
       out.push({
         name,
@@ -145,6 +148,24 @@ function nameFromNodeModulesPath(path: string): string | null {
   const idx = path.lastIndexOf("node_modules/");
   if (idx < 0) return null;
   return path.slice(idx + "node_modules/".length);
+}
+
+function nameFromNpmAliasResolved(resolved: unknown): string | null {
+  if (typeof resolved !== "string" || !resolved.startsWith("npm:")) {
+    return null;
+  }
+  const spec = resolved.slice("npm:".length);
+  const versionMarker = spec.startsWith("@")
+    ? spec.indexOf("@", spec.indexOf("/") + 1)
+    : spec.indexOf("@");
+  if (versionMarker <= 0) return null;
+  return validPackageName(spec.slice(0, versionMarker));
+}
+
+function validPackageName(name: unknown): string | null {
+  if (typeof name !== "string") return null;
+  const trimmed = name.trim();
+  return trimmed ? trimmed : null;
 }
 
 function walkNpmV1(
