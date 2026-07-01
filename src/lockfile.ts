@@ -104,7 +104,10 @@ export function parseNpm(text: string): LockfileEntry[] {
       if (!path || path === "" || info?.link) continue;
       const version = info?.version;
       if (!version) continue;
-      const name = info.name ?? nameFromNodeModulesPath(path);
+      const name =
+        info.name ??
+        nameFromNpmAliasResolved(info.resolved) ??
+        nameFromNodeModulesPath(path);
       if (!name) continue;
       out.push({
         name,
@@ -147,6 +150,21 @@ function nameFromNodeModulesPath(path: string): string | null {
   return path.slice(idx + "node_modules/".length);
 }
 
+function parseNpmAliasSpec(value: unknown): LockfileEntry | null {
+  if (typeof value !== "string" || !value.startsWith("npm:")) return null;
+  const spec = value.slice("npm:".length);
+  const at = spec.lastIndexOf("@");
+  if (at <= 0) return null;
+  const name = spec.slice(0, at);
+  const version = spec.slice(at + 1);
+  if (!name || !version || !isValidVersion(version)) return null;
+  return { name, version };
+}
+
+function nameFromNpmAliasResolved(resolved: unknown): string | null {
+  return parseNpmAliasSpec(resolved)?.name ?? null;
+}
+
 function walkNpmV1(
   deps: Record<
     string,
@@ -161,9 +179,10 @@ function walkNpmV1(
 ) {
   for (const [name, info] of Object.entries(deps)) {
     if (info?.version) {
+      const alias = parseNpmAliasSpec(info.version);
       out.push({
-        name,
-        version: info.version,
+        name: alias?.name ?? name,
+        version: alias?.version ?? info.version,
         ...(typeof info.resolved === "string"
           ? { resolved: info.resolved }
           : {}),
