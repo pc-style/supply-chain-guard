@@ -22,26 +22,25 @@
     <link rel="stylesheet" href="/styles.css" />
     <style>
       .roadmap-wrap { max-width: 860px; margin: 0 auto; padding: 48px 24px 64px; }
-      .roadmap-intro { margin: 8px 0 40px; }
-      .phase { border: 1px solid rgba(0, 0, 0, 0.12); border-radius: 12px; padding: 24px; margin-bottom: 24px; background: #fff; }
+      .roadmap-intro { margin: 8px 0 40px; color: var(--muted-2); }
+      .phase { border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 24px; background: var(--surface); }
       .phase-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
-      .phase-head h2 { margin: 0; font-size: 1.25rem; }
+      .phase-head h2 { margin: 0; font-size: 1.25rem; color: var(--text); }
       .status { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
-      .status-done { background: #dcf5e3; color: #14663a; }
-      .status-progress { background: #fdf0d4; color: #8a5b00; }
-      .status-next { background: #ececec; color: #555; }
-      .phase-meta { font-size: 0.85rem; opacity: 0.65; margin: 0 0 12px; }
+      .status-done { background: rgba(74, 222, 128, 0.15); color: #4ade80; }
+      .status-progress { background: rgba(251, 146, 60, 0.15); color: var(--warn); }
+      .status-next { background: var(--surface-2); color: var(--muted-2); }
+      .phase-meta { font-size: 0.85rem; color: var(--muted-2); margin: 0 0 12px; }
       .task-list { list-style: none; padding: 0; margin: 12px 0 0; }
-      .task-list li { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; border-top: 1px dashed rgba(0, 0, 0, 0.08); font-size: 0.95rem; }
+      .task-list li { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; border-top: 1px dashed var(--border-strong); font-size: 0.95rem; color: var(--text); }
       .task-list li:first-child { border-top: 0; }
       .tick { flex: none; width: 1.1em; text-align: center; font-weight: 700; }
-      .tick-done { color: #14663a; }
-      .tick-progress { color: #8a5b00; }
-      .tick-todo { color: #999; }
-      .task-done span:last-child { opacity: 0.75; }
-      .exit { margin-top: 14px; font-size: 0.85rem; padding: 10px 14px; background: rgba(0, 0, 0, 0.04); border-radius: 8px; }
-      .exit strong { text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.08em; }
-      .roadmap-updated { font-size: 0.8rem; opacity: 0.6; margin-top: 24px; }
+      .tick-done { color: #4ade80; }
+      .tick-todo { color: var(--muted); }
+      .task-done span:last-child { color: var(--muted-2); }
+      .exit { margin-top: 14px; font-size: 0.85rem; padding: 10px 14px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); }
+      .exit strong { text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.08em; color: var(--muted-2); }
+      .roadmap-updated { font-size: 0.8rem; color: var(--muted-2); margin-top: 24px; }
     </style>
   </head>
   <body>
