@@ -259,7 +259,7 @@ describe("analyzeDirectory", () => {
     expect(report.summary.installAllowed).toBe(true);
   });
 
-  test("postinstall script → high risk", async () => {
+  test("postinstall script alone → high risk warning, not a hard block", async () => {
     const dir = join(tmpDir, "postinstall");
     await makePackage(dir, {
       name: "evil",
@@ -268,7 +268,7 @@ describe("analyzeDirectory", () => {
     });
     const report = await analyzeDirectory("evil@1.0.0", "npm", dir, "local");
     expect(report.summary.risk).toBe("high");
-    expect(report.summary.installAllowed).toBe(false);
+    expect(report.summary.installAllowed).toBe(true);
     expect(report.findings.some((f) => f.id === "script.postinstall")).toBe(
       true,
     );

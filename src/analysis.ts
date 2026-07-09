@@ -16,7 +16,6 @@ import {
   commandExists,
   debug,
   objectValue,
-  readActiveAdvisory,
   readConfig,
   readJson,
   run,
@@ -55,19 +54,19 @@ const PATTERNS_ALL: Array<[RegExp, string, Risk, string]> = [
   [
     /(npmrc|\.ssh\/|id_rsa|AWS_SECRET|GITHUB_TOKEN|NPM_TOKEN)/i,
     "credential-access",
-    "high",
+    "low",
     "References credentials or sensitive key paths.",
   ],
   [
     /(base64\s+-d|Buffer\.from\([^)]*base64)/i,
     "encoded-payload",
-    "medium",
+    "low",
     "Decodes base64 payloads.",
   ],
   [
     /\bdns\.(?:resolve|resolve4|resolve6|lookup|setServers)\s*\(/i,
     "dns-exfiltration",
-    "high",
+    "low",
     "Uses DNS resolution APIs that are commonly abused for data exfiltration.",
   ],
   [
@@ -79,19 +78,25 @@ const PATTERNS_ALL: Array<[RegExp, string, Risk, string]> = [
   [
     /(os\.homedir\(\)|~\/\.npmrc|\.npmrc|\.ssh\/id_rsa)/i,
     "sensitive-path-access",
-    "high",
+    "low",
     "References sensitive local credential paths.",
   ],
   [
     /process\.env\s*(?:\[[^\]]+\]|\.[A-Z0-9_]+)/i,
     "env-secret-access",
-    "medium",
+    "low",
     "Accesses environment variables that may contain credentials.",
   ],
 ];
 
 // Patterns only checked when the scope is a lifecycle script (not generic source files).
 const PATTERNS_SCRIPTS_ONLY: Array<[RegExp, string, Risk, string]> = [
+  [
+    /(npmrc|\.ssh\/|id_rsa|AWS_SECRET|GITHUB_TOKEN|NPM_TOKEN|os\.homedir\(\)|~\/\.npmrc|\.npmrc|\.ssh\/id_rsa|process\.env\s*(?:\[[^\]]*(?:SECRET|TOKEN|KEY|PASSWORD|PASS|AUTH|CREDENTIAL)[^\]]*\]|\.(?:[A-Z0-9_]*(?:SECRET|TOKEN|KEY|PASSWORD|PASS|AUTH|CREDENTIAL)[A-Z0-9_]*)))/i,
+    "credential-access",
+    "high",
+    "References credentials, sensitive key paths, or environment secrets in a lifecycle script.",
+  ],
   [
     /(require\(["']child_process["']\)|from ["']node:child_process["']|execSync\(|spawnSync\(|eval\(|new Function\()/,
     "dynamic-execution",
@@ -318,52 +323,9 @@ export async function scanVsix(file: string): Promise<Report> {
   );
 }
 
-export async function scanNpmStage(
-  stageId: string,
-  options: { offline?: boolean } = {},
-): Promise<Report> {
-  const artifactPath = await downloadNpmStage(stageId);
-  const extracted = await extractTarball(artifactPath);
-  const packageDir = await findPackageRoot(extracted);
-  const pkg = await readJson<Record<string, unknown>>(
-    join(packageDir, "package.json"),
-  );
-  const name = String(pkg.name ?? "unknown");
-  const version = String(pkg.version ?? "unknown");
-  const known = name !== "unknown" && version !== "unknown";
-  const offlineOpt = { offline: options.offline };
-  const [socket, osv, packageAge] = known
-    ? await Promise.all([
-        checkSocket(name, version, offlineOpt),
-        checkOsv(name, version, offlineOpt),
-        checkPackageAge(name, version, offlineOpt),
-      ])
-    : [undefined, undefined, undefined];
-  const typosquat = known ? checkTyposquat(name) : undefined;
-  const config = await readConfig();
-  return analyzeDirectory(
-    `npm-stage:${stageId}:${name}@${version}`,
-    "npm-stage",
-    packageDir,
-    `npm stage download ${stageId}`,
-    artifactPath,
-    {
-      socket,
-      osv,
-      packageAge,
-      typosquat,
-    },
-    {
-      preset: config.preset,
-      safeResolver: config.safeResolver,
-      scanReason: "policy",
-    },
-  );
-}
-
 export async function analyzeDirectory(
   target: string,
-  kind: "npm" | "npm-stage" | "vsix",
+  kind: "npm" | "vsix",
   dir: string,
   source: string,
   artifactPath?: string,
@@ -380,6 +342,7 @@ export async function analyzeDirectory(
     ? await artifactInfo(artifactPath, source)
     : { source, sha256: "not-applicable", bytes: 0 };
   const risk = summarizeRisk(findings);
+  const installAllowed = !hasBlockingFinding(findings);
   const config = await readConfig();
   const policy: ReportPolicy = policyOverride
     ? {
@@ -403,13 +366,12 @@ export async function analyzeDirectory(
     artifact,
     intelligence: {
       ...intelligence,
-      activeAdvisory: readActiveAdvisory(),
     },
     packageJson: pkg,
     summary: {
       risk,
       findingCount: findings.length,
-      installAllowed: risk !== "high",
+      installAllowed,
     },
     findings,
     policy,
@@ -422,12 +384,12 @@ function inspectIntelligence(
 ) {
   if (intelligence.socket?.status === "checked") {
     const score = intelligence.socket.supplyChainRisk;
-    if (typeof score === "number" && score >= 0.3) {
+    if (typeof score === "number" && score < 0.5) {
       findings.push({
         id: "socket.supply-chain-risk",
-        title: "Socket reports elevated supply-chain risk",
-        severity: score >= 0.7 ? "high" : "medium",
-        evidence: `supplyChainRiskScore=${score} (0=lowest risk, 1=highest risk)`,
+        title: "Socket reports low supply-chain safety score",
+        severity: score < 0.3 ? "high" : "medium",
+        evidence: `supplyChainRiskScore=${score} (0=highest risk, 1=lowest risk / safest)`,
         recommendation:
           "Require agent review and inspect Socket package details before installing.",
       });
@@ -539,23 +501,11 @@ function inspectIntelligence(
       });
     }
   }
-
-  const advisory = readActiveAdvisory();
-  if (advisory.active) {
-    findings.push({
-      id: "advisory.active-supply-chain-incident",
-      title: "Active supply-chain advisory is enabled",
-      severity: "medium",
-      evidence: advisory.message,
-      recommendation:
-        "Use staging flow only and require explicit acknowledgement before package operations.",
-    });
-  }
 }
 
 function inspectPackageJson(
   pkg: Record<string, unknown>,
-  kind: "npm" | "npm-stage" | "vsix",
+  kind: "npm" | "vsix",
   findings: Finding[],
 ) {
   const scripts = objectValue(pkg.scripts);
@@ -680,7 +630,10 @@ function inspectText(
   inMinifiedFile = false,
 ) {
   const patterns = isScript
-    ? [...PATTERNS_ALL, ...PATTERNS_SCRIPTS_ONLY]
+    ? [
+        ...PATTERNS_ALL.filter(([, id]) => id !== "credential-access"),
+        ...PATTERNS_SCRIPTS_ONLY,
+      ]
     : PATTERNS_ALL;
   for (const [pattern, id, severity, title] of patterns) {
     const match = text.match(pattern);
@@ -702,6 +655,31 @@ function summarizeRisk(findings: Finding[]): Risk {
   if (findings.some((finding) => finding.severity === "medium"))
     return "medium";
   return "low";
+}
+
+function hasBlockingFinding(findings: Finding[]): boolean {
+  return findings.some((finding) => {
+    if (finding.id === "artifact.integrity-mismatch") return true;
+    if (finding.id === "name.typosquat") return true;
+    if (finding.id === "npm.signature.invalid") return true;
+    if (
+      finding.id === "socket.supply-chain-risk" &&
+      finding.severity === "high"
+    ) {
+      return true;
+    }
+    if (finding.id.startsWith("osv.") && finding.severity === "high") {
+      return true;
+    }
+    if (
+      finding.id.startsWith("script.") &&
+      (finding.id.endsWith(".pipe-to-shell") ||
+        finding.id.endsWith(".credential-access"))
+    ) {
+      return true;
+    }
+    return false;
+  });
 }
 
 function snippet(text: string, index: number) {
@@ -875,7 +853,7 @@ export function parsePackageSpec(spec: string): {
 
 function buildReportPolicy(
   base: Partial<ReportPolicy>,
-  context: {
+  _context: {
     name?: string;
     requestedVersion?: string;
     resolvedVersion?: string;
@@ -884,40 +862,17 @@ function buildReportPolicy(
   },
 ): Promise<ReportPolicy> {
   const preset = base.preset ?? "default";
-  const safeResolver = base.safeResolver ?? "suggest";
+  const safeResolver = base.safeResolver ?? "off";
   const scanReason = base.scanReason ?? "direct-review";
-  const freshnessWindowHours = freshnessWindowHoursForPreset(preset);
-  const versionAgeHours =
-    context.packageAge?.status === "checked"
-      ? context.packageAge.versionAgeHours
-      : undefined;
-  const suggestionPromise =
-    safeResolver === "suggest" &&
-    context.name &&
-    context.resolvedVersion &&
-    typeof versionAgeHours === "number" &&
-    versionAgeHours >= 0 &&
-    versionAgeHours < freshnessWindowHours
-      ? buildSafeResolverSuggestion({
-          name: context.name,
-          requestedVersion: context.requestedVersion,
-          resolvedVersion: context.resolvedVersion,
-          freshnessWindowHours,
-          offline: context.offline,
-        })
-      : Promise.resolve(undefined);
-  return suggestionPromise.then((safeResolverSuggestion) => ({
+  return Promise.resolve({
     preset,
     safeResolver,
     scanReason,
-    ...(safeResolverSuggestion ? { safeResolverSuggestion } : {}),
-  }));
+  });
 }
 
 export function freshnessWindowHoursForPreset(preset: PolicyPreset): number {
-  if (preset === "quiet") return 24;
-  if (preset === "strict-ci") return 30 * 24;
-  if (preset === "enterprise") return 30 * 24;
+  if (preset === "strict") return 30 * 24;
   return 7 * 24;
 }
 
@@ -1064,28 +1019,6 @@ async function extractTarball(path: string) {
   const dir = await mkdtemp(join(WORK_DIR, "npm-"));
   await run("tar", ["-xzf", path, "-C", dir]);
   return dir;
-}
-
-async function downloadNpmStage(stageId: string) {
-  const dir = await mkdtemp(join(WORK_DIR, "stage-download-"));
-  const before = new Set(await readdir(dir));
-  await run("npm", ["stage", "download", stageId], { cwd: dir });
-  const after = await readdir(dir);
-  const created = after.filter(
-    (name) => !before.has(name) && name.endsWith(".tgz"),
-  );
-  if (created.length !== 1) {
-    throw new Error(
-      `Expected npm stage download to create one .tgz file, found ${created.length}`,
-    );
-  }
-  const source = join(dir, created[0]);
-  const dest = join(
-    CACHE_DIR,
-    `npm-stage-${stageId.replace(/[^a-z0-9_.-]+/gi, "_")}.tgz`,
-  );
-  await Bun.write(dest, await Bun.file(source).arrayBuffer());
-  return dest;
 }
 
 async function findPackageRoot(dir: string) {

@@ -15,6 +15,7 @@ import type {
 } from "./core";
 import {
   commandExists,
+  objectValue,
   REPORT_DIR,
   ROOT,
   readConfig,
@@ -28,8 +29,10 @@ export async function checkSocket(
   options: { offline?: boolean } = {},
 ): Promise<SocketResult> {
   const token = Bun.env.SOCKET_API_KEY;
-  const packagePath = `${encodeURIComponent(name).replace("%40", "@")}/${encodeURIComponent(version)}`;
-  const url = `https://api.socket.dev/v0/npm/${packagePath}/score`;
+  const orgSlug = Bun.env.SOCKET_ORG_SLUG;
+  const url = orgSlug
+    ? `https://api.socket.dev/v0/orgs/${encodeURIComponent(orgSlug)}/purl`
+    : `https://api.socket.dev/v0/npm/${npmPackagePath(name, version)}/score`;
   if (options.offline) {
     return {
       status: "skipped",
@@ -51,15 +54,18 @@ export async function checkSocket(
   }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
+  const purl = npmPurl(name, version);
   try {
     const res = await fetch(url, {
+      method: orgSlug ? "POST" : "GET",
       signal: controller.signal,
       headers: {
         Authorization: `Basic ${Buffer.from(`${token}:`).toString("base64")}`,
         Accept: "application/json",
+        "Content-Type": "application/json",
       },
+      ...(orgSlug ? { body: JSON.stringify({ components: [{ purl }] }) } : {}),
     });
-    clearTimeout(timeout);
     if (!res.ok) {
       const message =
         res.status === 401 || res.status === 403
@@ -71,14 +77,15 @@ export async function checkSocket(
               : `Socket returned HTTP ${res.status}`;
       return { status: "error", package: name, version, url, message };
     }
-    const data = (await res.json()) as Record<string, any>;
-    const score = data.score ?? data;
-    const rawSupplyChainRisk = score?.supplyChainRisk;
+    const data = (await res.json()) as Record<string, unknown>;
+    const score = orgSlug ? socketScoreFromPurlResponse(data, purl) : data;
+    const rawSupplyChainRisk = objectValue(score).supplyChainRisk;
+    const nestedSupplyChainRiskScore = objectValue(rawSupplyChainRisk).score;
     const supplyChainRisk =
       typeof rawSupplyChainRisk === "number"
         ? rawSupplyChainRisk
-        : typeof rawSupplyChainRisk?.score === "number"
-          ? rawSupplyChainRisk.score
+        : typeof nestedSupplyChainRiskScore === "number"
+          ? nestedSupplyChainRiskScore
           : undefined;
     return {
       status: "checked",
@@ -97,7 +104,44 @@ export async function checkSocket(
           ? error.message
           : String(error);
     return { status: "error", package: name, version, url, message };
+  } finally {
+    clearTimeout(timeout);
   }
+}
+
+function npmPackagePath(name: string, version: string) {
+  return `${name
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/")}/${encodeURIComponent(version)}`;
+}
+
+function npmPurl(name: string, version: string) {
+  const encodedName = name
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+  return `pkg:npm/${encodedName}@${encodeURIComponent(version)}`;
+}
+
+function socketScoreFromPurlResponse(data: unknown, purl: string): unknown {
+  const root = objectValue(data);
+  if ("score" in root) return root.score;
+  const components = Array.isArray(root.components)
+    ? root.components
+    : Array.isArray(root.results)
+      ? root.results
+      : Array.isArray(root.data)
+        ? root.data
+        : [];
+  const component = components
+    .map(objectValue)
+    .find(
+      (entry) =>
+        entry.purl === purl || objectValue(entry.component).purl === purl,
+    );
+  if (!component) return data;
+  return component.score ?? component.scores ?? component;
 }
 
 export async function runAgentReviews(
@@ -158,11 +202,30 @@ export async function runAgentReview(
     proc.stdin?.write(prompt);
     proc.stdin?.end();
   }
-  const [stdout, stderr, exitCode] = await Promise.all([
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<"timeout">((resolve) => {
+    timeout = setTimeout(() => resolve("timeout"), 120_000);
+  });
+  const completed = Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
     proc.exited,
-  ]);
+  ] as const);
+  const result = await Promise.race([completed, timedOut]);
+  if (timeout) clearTimeout(timeout);
+  if (result === "timeout") {
+    proc.kill();
+    const output = `${agent} review timed out after 120s.`;
+    await Bun.write(outputPath, output);
+    return {
+      agent,
+      status: "error",
+      outputPath,
+      exitCode: 124,
+      summary: output,
+    };
+  }
+  const [stdout, stderr, exitCode] = result;
   const cleanStderr = sanitizeAgentStderr(stderr);
   const output = [
     stdout,
@@ -279,7 +342,7 @@ function normalizedIntelligence(report: Report) {
       status: socket.status,
       supplyChainRisk: socket.supplyChainRisk,
       scale:
-        "0=lowest risk, 1=highest risk; do not treat as approval confidence",
+        "0=highest risk, 1=lowest risk / safest; do not treat as approval confidence",
       message: socket.message,
       components: socketRiskComponents(socket.rawScore).slice(0, 12),
     },
@@ -293,7 +356,6 @@ function normalizedIntelligence(report: Report) {
     npmSignature: report.intelligence.npmSignature,
     typosquat: report.intelligence.typosquat,
     packageAge: report.intelligence.packageAge,
-    activeAdvisory: report.intelligence.activeAdvisory,
   };
 }
 
@@ -333,8 +395,7 @@ export function parseAgentMode(args: string[]): AgentName[] {
   if (!value || value === "none") return [];
   if (value === "codex") return ["codex"];
   if (value === "pi") return ["pi"];
-  if (value === "both") return ["codex", "pi"];
-  throw new Error("--agent must be one of: none, codex, pi, both");
+  throw new Error("--agent must be one of: none, codex, pi");
 }
 
 export async function resolveAgentMode(args: string[]): Promise<AgentName[]> {
@@ -346,7 +407,6 @@ export async function resolveAgentMode(args: string[]): Promise<AgentName[]> {
 export function agentsFromMode(mode: AgentMode): AgentName[] {
   if (mode === "codex") return ["codex"];
   if (mode === "pi") return ["pi"];
-  if (mode === "both") return ["codex", "pi"];
   return [];
 }
 

@@ -1,20 +1,17 @@
 import { join, relative } from "node:path";
 import type { AgentReview, Report } from "./core";
-import { REPORT_DIR, ROOT } from "./core";
+import { REPORT_DIR, ROOT, readConfig } from "./core";
 import {
   resolveAgentMode,
   runAgentReviews,
   writeAgentPrompt,
 } from "./integrations";
-import { buildCycloneDxSbom, sbomPathFor } from "./sbom";
 import { blockedLine, c, header, meta, okLine, riskRow, riskWord } from "./ui";
 
 export const REPORT_SCHEMA_URL =
   "https://raw.githubusercontent.com/pc-style/supply-chain-guard/main/docs/report-schema.json";
 
-export type EmitReportOptions = {
-  sbom?: boolean;
-};
+export type EmitReportOptions = { silent?: boolean };
 
 export async function emitReport(
   report: Report,
@@ -29,12 +26,9 @@ export async function emitReport(
     jsonPath.replace(/\.json$/, ".md"),
     renderMarkdown(report, jsonPath),
   );
-  await writeAgentPrompt(report, "codex", jsonPath);
-  await writeAgentPrompt(report, "pi", jsonPath);
-  if (opts.sbom) {
-    const sbom = buildCycloneDxSbom(report);
-    await Bun.write(sbomPathFor(jsonPath), JSON.stringify(sbom, null, 2));
-  }
+
+  if (opts.silent) return jsonPath;
+
   if (json) {
     console.log(JSON.stringify(serialized, null, 2));
     return jsonPath;
@@ -93,9 +87,6 @@ function renderHumanReport(report: Report, jsonPath: string) {
   if (report.policy) {
     meta("preset", report.policy.preset);
     meta("scan-reason", report.policy.scanReason);
-    if (report.policy.safeResolverSuggestion) {
-      meta("safe-resolver", report.policy.safeResolverSuggestion.message);
-    }
   }
 
   if (report.findings.length > 0) {
@@ -160,8 +151,7 @@ export function renderMarkdown(report: Report, reportPath: string) {
     "",
     `- Active preset: ${report.policy?.preset ?? "default"}`,
     `- Scan reason: ${report.policy?.scanReason ?? "direct-review"}`,
-    `- Safe resolver: ${report.policy?.safeResolverSuggestion?.message ?? (report.policy?.safeResolver ? report.policy.safeResolver : "off")}`,
-    "",
+
     "## Intelligence",
     "",
     ...intelligenceLines(report),
@@ -218,7 +208,7 @@ function intelligenceLines(report: Report) {
   const socket = report.intelligence.socket;
   if (socket) {
     lines.push(
-      `- Socket: ${socket.status}${typeof socket.supplyChainRisk === "number" ? `; supplyChainRisk=${socket.supplyChainRisk} (0=lowest risk, 1=highest risk; guard flags supplyChainRisk >= 0.3 (0=lowest, 1=highest))` : ""}${socket.message ? `; ${socket.message}` : ""}`,
+      `- Socket: ${socket.status}${typeof socket.supplyChainRisk === "number" ? `; supplyChainRisk=${socket.supplyChainRisk} (0=highest risk, 1=lowest risk / safest; guard flags supplyChainRisk < 0.5)` : ""}${socket.message ? `; ${socket.message}` : ""}`,
     );
     const components = socketRiskComponents(socket.rawScore).slice(0, 8);
     if (components.length)
@@ -243,9 +233,7 @@ function intelligenceLines(report: Report) {
   lines.push(
     `- Package age: ${report.intelligence.packageAge?.status === "checked" ? `package=${report.intelligence.packageAge.packageAgeDays ?? "?"}d; version=${report.intelligence.packageAge.versionAgeHours ?? "?"}h` : (report.intelligence.packageAge?.status ?? "not-applicable")}`,
   );
-  lines.push(
-    `- Active advisory: ${report.intelligence.activeAdvisory?.active ?? false}`,
-  );
+
   return lines;
 }
 
@@ -317,17 +305,37 @@ export async function maybeRunConfiguredAgentReview(
 ) {
   const agents = await resolveAgentMode(args);
   if (agents.length === 0) return;
+  await Promise.all(
+    agents.map((agent) => writeAgentPrompt(report, agent, reportPath)),
+  );
   const reviews = await runAgentReviews(report, reportPath, agents);
   report.agentReviews = reviews;
-  await emitReport(report, json, opts);
-  blockOnFailedReview(report.target, reviews);
+  await emitReport(report, json, { ...opts, silent: json || opts.silent });
+  await blockOnFailedReview(report.target, reviews);
 }
 
-export function blockOnFailedReview(target: string, reviews: AgentReview[]) {
-  const failed = reviews.find((review) => review.status !== "approved");
+export async function blockOnFailedReview(
+  target: string,
+  reviews: AgentReview[],
+) {
+  const config = await readConfig();
+  const strict = config.preset === "strict";
+  const failed = reviews.find((review) =>
+    strict
+      ? review.status !== "approved"
+      : review.status === "rejected" ||
+        review.status === "manual-review" ||
+        review.status === "error",
+  );
   if (failed) {
     throw new Error(
       `Blocked ${target}: ${failed.agent} returned ${failed.status}. See ${failed.outputPath}`,
+    );
+  }
+  const errors = reviews.filter((review) => review.status === "error");
+  for (const error of errors) {
+    console.error(
+      `warning: ${error.agent} review errored; continuing under ${config.preset} policy. See ${error.outputPath}`,
     );
   }
 }

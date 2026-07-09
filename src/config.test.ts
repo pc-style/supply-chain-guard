@@ -7,51 +7,49 @@ import {
 } from "./core";
 
 describe("config normalization", () => {
-  test("defaults are preset-aware", () => {
+  test("defaults are minimal", () => {
     expect(normalizeConfig(undefined)).toEqual(DEFAULT_CONFIG);
   });
 
-  test("loads old agentReview-only config", () => {
-    expect(normalizeConfig({ agentReview: "both" })).toEqual({
-      agentReview: "both",
-      preset: "default",
-      safeResolver: "suggest",
-    });
+  test("removed both agent mode fails closed", () => {
+    expect(() => normalizeConfig({ agentReview: "both" } as never)).toThrow(
+      "agentReview 'both' was removed",
+    );
   });
 
-  test("keeps explicit policy fields", () => {
+  test("keeps explicit supported policy fields", () => {
     expect(
       normalizeConfig({
         agentReview: "codex",
-        preset: "quiet",
+        preset: "strict",
         safeResolver: "off",
       }),
     ).toEqual({
       agentReview: "codex",
-      preset: "quiet",
+      preset: "strict",
       safeResolver: "off",
     });
   });
 
   test("readOption rejects flag-like values after the flag name", () => {
     expect(readOption(["--preset", "--show"], "--preset")).toBeUndefined();
-    expect(readOption(["--preset", "quiet"], "--preset")).toBe("quiet");
+    expect(readOption(["--preset", "strict"], "--preset")).toBe("strict");
   });
 
-  test("applies shell-session preset override", () => {
+  test("removed strict shell-session preset override maps to strict", () => {
     expect(
       applyConfigEnv(
         {
           agentReview: "none",
-          preset: "default",
-          safeResolver: "suggest",
+          preset: "strict",
+          safeResolver: "off",
         },
         "enterprise",
       ),
     ).toEqual({
       agentReview: "none",
-      preset: "enterprise",
-      safeResolver: "suggest",
+      preset: "strict",
+      safeResolver: "off",
     });
   });
 });

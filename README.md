@@ -145,10 +145,11 @@ Recommended Socket scopes:
 
 ## Socket Intelligence
 
-Set `SOCKET_API_KEY` to query Socket.dev during npm scans:
+Set `SOCKET_API_KEY` and `SOCKET_ORG_SLUG` to query Socket.dev during npm scans:
 
 ```sh
 export SOCKET_API_KEY="..."
+export SOCKET_ORG_SLUG="your-org-slug"
 ```
 
 Reports say whether Socket was checked, skipped, or errored. If Socket returns a low supply-chain score, the guard raises the risk and can block the install.

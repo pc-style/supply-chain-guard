@@ -65,19 +65,11 @@ async function captureStdout(run: () => Promise<unknown>) {
   return lines.join("\n");
 }
 
-describe("lockfile policy selection", () => {
-  test("quiet selects only fresh versions under 24h", () => {
-    const selection = planLockfileSelection(
-      [{ name: "fresh-pkg", version: "1.0.0" }],
-      null,
-      "quiet",
-      new Map([["fresh-pkg@1.0.0", age(12)]]),
-    );
-    expect(selection.selected).toHaveLength(1);
-    expect(selection.selected[0]?.reason).toBe("fresh-version");
-    expect(selection.skipped).toHaveLength(0);
-  });
+function stripAnsi(text: string) {
+  return text.replace(/\x1b\[[0-9;]*m/g, "");
+}
 
+describe("lockfile policy selection", () => {
   test("default skips old unchanged packages when baseline matches", () => {
     const selection = planLockfileSelection(
       [{ name: "stable-pkg", version: "1.0.0" }],
@@ -109,7 +101,7 @@ describe("lockfile policy selection", () => {
     expect(selection.selected[0]?.reason).toBe("changed-lockfile-entry");
   });
 
-  test("strict-ci uses a 30-day freshness window once a baseline exists", () => {
+  test("strict uses a 30-day freshness window once a baseline exists", () => {
     const baseline = {
       schemaVersion: 1 as const,
       generatedAt: "2026-05-22T00:00:00Z",
@@ -118,13 +110,13 @@ describe("lockfile policy selection", () => {
     const selected = planLockfileSelection(
       [{ name: "borderline-pkg", version: "1.0.0" }],
       baseline,
-      "strict-ci",
+      "strict",
       new Map([["borderline-pkg@1.0.0", age(29 * 24)]]),
     );
     const skipped = planLockfileSelection(
       [{ name: "borderline-pkg", version: "1.0.0" }],
       baseline,
-      "strict-ci",
+      "strict",
       new Map([["borderline-pkg@1.0.0", age(31 * 24)]]),
     );
     expect(selected.selected).toHaveLength(1);
@@ -133,11 +125,11 @@ describe("lockfile policy selection", () => {
     expect(skipped.skipped).toHaveLength(1);
   });
 
-  test("strict-ci scans the full lockfile when no baseline exists", () => {
+  test("strict scans the full lockfile when no baseline exists", () => {
     const selection = planLockfileSelection(
       [{ name: "old-pkg", version: "1.0.0" }],
       null,
-      "strict-ci",
+      "strict",
       new Map([["old-pkg@1.0.0", age(400 * 24)]]),
     );
     expect(selection.selected).toHaveLength(1);
@@ -148,21 +140,21 @@ describe("lockfile policy selection", () => {
     const selection = planLockfileSelection(
       [{ name: "unknown-age-pkg", version: "1.0.0" }],
       null,
-      "quiet",
+      "default",
       new Map([["unknown-age-pkg@1.0.0", ageError()]]),
     );
     expect(selection.selected).toHaveLength(1);
-    expect(selection.selected[0]?.reason).toBe("fresh-version");
+    expect(selection.selected[0]?.reason).toBe("policy");
   });
 
-  test("advisory never blocks even when high-risk findings exist", () => {
-    expect(shouldBlockLockfileInstall("advisory", 1)).toBe(false);
+  test("blocking findings block under supported presets", () => {
     expect(shouldBlockLockfileInstall("default", 1)).toBe(true);
+    expect(shouldBlockLockfileInstall("strict", 1)).toBe(true);
   });
 
   test("scan failures block unless explicitly allowed", () => {
     expect(shouldBlockLockfileInstall("default", 0, 1, false)).toBe(true);
-    expect(shouldBlockLockfileInstall("advisory", 0, 1, false)).toBe(true);
+    expect(shouldBlockLockfileInstall("strict", 0, 1, false)).toBe(true);
     expect(shouldBlockLockfileInstall("default", 0, 1, true)).toBe(false);
   });
 });
@@ -210,6 +202,7 @@ describe("scan-lockfile plan mode", () => {
       const output = await captureStdout(async () => {
         summary = await scanLockfileCommand(["--plan", "--offline"]);
       });
+      const plainOutput = stripAnsi(output);
 
       expect(summary).toBeDefined();
       expect(summary?.selected).toBe(2);
@@ -224,18 +217,18 @@ describe("scan-lockfile plan mode", () => {
         false,
       );
       expect(existsSync(join(dir, ".scguard", "reports"))).toBe(false);
-      expect(output).toContain("selected: 2");
-      expect(output).toContain("skipped: 0");
-      expect(output).toContain(
+      expect(plainOutput).toContain("selected: 2");
+      expect(plainOutput).toContain("skipped: 0");
+      expect(plainOutput).toContain(
         "@scguard-plan/never-published-alpha@1.0.0 reason=policy",
       );
-      expect(output).toContain(
+      expect(plainOutput).toContain(
         "preview only; no package scans, reports, or baseline updates were run",
       );
-      expect(output).toContain("next: scguard scan-lockfile . --offline");
-      expect(output).not.toContain("scanned  2/2");
-      expect(output).not.toContain("baseline updated");
-      expect(output).not.toContain("packages could not be analyzed");
+      expect(plainOutput).toContain("next: scguard scan-lockfile . --offline");
+      expect(plainOutput).not.toContain("scanned  2/2");
+      expect(plainOutput).not.toContain("baseline updated");
+      expect(plainOutput).not.toContain("packages could not be analyzed");
     } finally {
       process.chdir(originalCwd);
       await rm(dir, { recursive: true, force: true });

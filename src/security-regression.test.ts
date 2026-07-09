@@ -65,18 +65,6 @@ describe("security regressions", () => {
     );
   });
 
-  test("npm stage approve is detected with leading global options", () => {
-    const result = classifyPackageCommand("npm", [
-      "--otp=123456",
-      "stage",
-      "approve",
-      "stage-abc",
-    ]);
-    expect(result.packageOperation).toBe(true);
-    expect(result.kind).toBe("npm-stage");
-    expect(result.specs).toEqual(["stage-abc"]);
-  });
-
   test("npm install with --prefix is still a guarded package operation", () => {
     const result = classifyPackageCommand("npm", [
       "--prefix",
@@ -188,7 +176,7 @@ describe("security regressions", () => {
     expect(selection.selected[0]?.reason).toBe("policy");
   });
 
-  test("socket elevated supplyChainRisk produces a finding", async () => {
+  test("socket high supplyChainRisk safety score produces no finding", async () => {
     const report = await analyzeDirectory(
       "demo@1.0.0",
       "npm",
@@ -197,6 +185,22 @@ describe("security regressions", () => {
       undefined,
       {
         socket: { status: "checked", supplyChainRisk: 0.9 },
+      },
+    );
+    expect(
+      report.findings.some((f) => f.id === "socket.supply-chain-risk"),
+    ).toBe(false);
+  });
+
+  test("socket low supplyChainRisk safety score produces a finding", async () => {
+    const report = await analyzeDirectory(
+      "demo@1.0.0",
+      "npm",
+      tmpDir,
+      "local",
+      undefined,
+      {
+        socket: { status: "checked", supplyChainRisk: 0.2 },
       },
     );
     expect(
