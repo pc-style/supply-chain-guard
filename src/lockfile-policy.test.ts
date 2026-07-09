@@ -65,6 +65,10 @@ async function captureStdout(run: () => Promise<unknown>) {
   return lines.join("\n");
 }
 
+function stripAnsi(text: string) {
+  return text.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
 describe("lockfile policy selection", () => {
   test("quiet selects only fresh versions under 24h", () => {
     const selection = planLockfileSelection(
@@ -210,6 +214,7 @@ describe("scan-lockfile plan mode", () => {
       const output = await captureStdout(async () => {
         summary = await scanLockfileCommand(["--plan", "--offline"]);
       });
+      const plainOutput = stripAnsi(output);
 
       expect(summary).toBeDefined();
       expect(summary?.selected).toBe(2);
@@ -224,18 +229,18 @@ describe("scan-lockfile plan mode", () => {
         false,
       );
       expect(existsSync(join(dir, ".scguard", "reports"))).toBe(false);
-      expect(output).toContain("selected: 2");
-      expect(output).toContain("skipped: 0");
-      expect(output).toContain(
+      expect(plainOutput).toContain("selected: 2");
+      expect(plainOutput).toContain("skipped: 0");
+      expect(plainOutput).toContain(
         "@scguard-plan/never-published-alpha@1.0.0 reason=policy",
       );
-      expect(output).toContain(
+      expect(plainOutput).toContain(
         "preview only; no package scans, reports, or baseline updates were run",
       );
-      expect(output).toContain("next: scguard scan-lockfile . --offline");
-      expect(output).not.toContain("scanned  2/2");
-      expect(output).not.toContain("baseline updated");
-      expect(output).not.toContain("packages could not be analyzed");
+      expect(plainOutput).toContain("next: scguard scan-lockfile . --offline");
+      expect(plainOutput).not.toContain("scanned  2/2");
+      expect(plainOutput).not.toContain("baseline updated");
+      expect(plainOutput).not.toContain("packages could not be analyzed");
     } finally {
       process.chdir(originalCwd);
       await rm(dir, { recursive: true, force: true });

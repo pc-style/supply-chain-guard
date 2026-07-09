@@ -188,7 +188,7 @@ describe("security regressions", () => {
     expect(selection.selected[0]?.reason).toBe("policy");
   });
 
-  test("socket elevated supplyChainRisk produces a finding", async () => {
+  test("socket high supplyChainRisk safety score produces no finding", async () => {
     const report = await analyzeDirectory(
       "demo@1.0.0",
       "npm",
@@ -197,6 +197,22 @@ describe("security regressions", () => {
       undefined,
       {
         socket: { status: "checked", supplyChainRisk: 0.9 },
+      },
+    );
+    expect(
+      report.findings.some((f) => f.id === "socket.supply-chain-risk"),
+    ).toBe(false);
+  });
+
+  test("socket low supplyChainRisk safety score produces a finding", async () => {
+    const report = await analyzeDirectory(
+      "demo@1.0.0",
+      "npm",
+      tmpDir,
+      "local",
+      undefined,
+      {
+        socket: { status: "checked", supplyChainRisk: 0.2 },
       },
     );
     expect(

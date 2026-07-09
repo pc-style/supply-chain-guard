@@ -320,7 +320,13 @@ export async function readConfigFile(): Promise<Config> {
   try {
     const parsed = await readJson<Partial<Config>>(CONFIG_PATH);
     return normalizeConfig(parsed);
-  } catch {
+  } catch (error) {
+    if (existsSync(CONFIG_PATH)) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(
+        `warning: failed to parse config ${CONFIG_PATH}; using defaults. ${message}`,
+      );
+    }
     return DEFAULT_CONFIG;
   }
 }

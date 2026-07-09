@@ -103,7 +103,7 @@ export async function reviewOrInstall(
       const reviews = await runAgentReviews(report, reportPath, agentMode);
       report.agentReviews = reviews;
       reportPath = await emitReport(report, json, emitOpts);
-      blockOnFailedReview(spec, reviews);
+      await blockOnFailedReview(spec, reviews);
     }
     if (!json) printNextSteps(spec, reportPath, opts.install);
     passed.push(spec);
@@ -351,7 +351,7 @@ export async function guardCommand(args: string[]) {
         const reviews = await runAgentReviews(report, reportPath, agentMode);
         report.agentReviews = reviews;
         reportPath = await emitReport(report, false);
-        blockOnFailedReview(spec, reviews);
+        await blockOnFailedReview(spec, reviews);
       }
     }
   }
@@ -394,7 +394,7 @@ async function guardVsCodeExtension(
     const reviews = await runAgentReviews(report, reportPath, agentMode);
     report.agentReviews = reviews;
     reportPath = await emitReport(report, false);
-    blockOnFailedReview(target, reviews);
+    await blockOnFailedReview(target, reviews);
   }
   requireActiveIncidentAcceptance();
   await run(command, stripGuardOptions(args));
@@ -422,7 +422,7 @@ async function guardNpmStage(command: string, args: string[], specs: string[]) {
     const reviews = await runAgentReviews(report, reportPath, agentMode);
     report.agentReviews = reviews;
     reportPath = await emitReport(report, false);
-    blockOnFailedReview(stageId, reviews);
+    await blockOnFailedReview(stageId, reviews);
   }
   requireActiveIncidentAcceptance();
   await run(command, stripGuardOptions(args));

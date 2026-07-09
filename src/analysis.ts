@@ -55,19 +55,19 @@ const PATTERNS_ALL: Array<[RegExp, string, Risk, string]> = [
   [
     /(npmrc|\.ssh\/|id_rsa|AWS_SECRET|GITHUB_TOKEN|NPM_TOKEN)/i,
     "credential-access",
-    "high",
+    "low",
     "References credentials or sensitive key paths.",
   ],
   [
     /(base64\s+-d|Buffer\.from\([^)]*base64)/i,
     "encoded-payload",
-    "medium",
+    "low",
     "Decodes base64 payloads.",
   ],
   [
     /\bdns\.(?:resolve|resolve4|resolve6|lookup|setServers)\s*\(/i,
     "dns-exfiltration",
-    "high",
+    "low",
     "Uses DNS resolution APIs that are commonly abused for data exfiltration.",
   ],
   [
@@ -79,19 +79,25 @@ const PATTERNS_ALL: Array<[RegExp, string, Risk, string]> = [
   [
     /(os\.homedir\(\)|~\/\.npmrc|\.npmrc|\.ssh\/id_rsa)/i,
     "sensitive-path-access",
-    "high",
+    "low",
     "References sensitive local credential paths.",
   ],
   [
     /process\.env\s*(?:\[[^\]]+\]|\.[A-Z0-9_]+)/i,
     "env-secret-access",
-    "medium",
+    "low",
     "Accesses environment variables that may contain credentials.",
   ],
 ];
 
 // Patterns only checked when the scope is a lifecycle script (not generic source files).
 const PATTERNS_SCRIPTS_ONLY: Array<[RegExp, string, Risk, string]> = [
+  [
+    /(npmrc|\.ssh\/|id_rsa|AWS_SECRET|GITHUB_TOKEN|NPM_TOKEN|os\.homedir\(\)|~\/\.npmrc|\.npmrc|\.ssh\/id_rsa|process\.env\s*(?:\[[^\]]+\]|\.[A-Z0-9_]+))/i,
+    "credential-access",
+    "high",
+    "References credentials, sensitive key paths, or environment secrets in a lifecycle script.",
+  ],
   [
     /(require\(["']child_process["']\)|from ["']node:child_process["']|execSync\(|spawnSync\(|eval\(|new Function\()/,
     "dynamic-execution",
@@ -380,6 +386,7 @@ export async function analyzeDirectory(
     ? await artifactInfo(artifactPath, source)
     : { source, sha256: "not-applicable", bytes: 0 };
   const risk = summarizeRisk(findings);
+  const installAllowed = !hasBlockingFinding(findings);
   const config = await readConfig();
   const policy: ReportPolicy = policyOverride
     ? {
@@ -409,7 +416,7 @@ export async function analyzeDirectory(
     summary: {
       risk,
       findingCount: findings.length,
-      installAllowed: risk !== "high",
+      installAllowed,
     },
     findings,
     policy,
@@ -422,12 +429,12 @@ function inspectIntelligence(
 ) {
   if (intelligence.socket?.status === "checked") {
     const score = intelligence.socket.supplyChainRisk;
-    if (typeof score === "number" && score >= 0.3) {
+    if (typeof score === "number" && score < 0.5) {
       findings.push({
         id: "socket.supply-chain-risk",
-        title: "Socket reports elevated supply-chain risk",
-        severity: score >= 0.7 ? "high" : "medium",
-        evidence: `supplyChainRiskScore=${score} (0=lowest risk, 1=highest risk)`,
+        title: "Socket reports low supply-chain safety score",
+        severity: score < 0.3 ? "high" : "medium",
+        evidence: `supplyChainRiskScore=${score} (0=highest risk, 1=lowest risk / safest)`,
         recommendation:
           "Require agent review and inspect Socket package details before installing.",
       });
@@ -702,6 +709,25 @@ function summarizeRisk(findings: Finding[]): Risk {
   if (findings.some((finding) => finding.severity === "medium"))
     return "medium";
   return "low";
+}
+
+function hasBlockingFinding(findings: Finding[]): boolean {
+  return findings.some((finding) => {
+    if (finding.id === "artifact.integrity-mismatch") return true;
+    if (finding.id === "name.typosquat") return true;
+    if (finding.id === "npm.signature.invalid") return true;
+    if (finding.id.startsWith("osv.") && finding.severity === "high") {
+      return true;
+    }
+    if (
+      finding.id.startsWith("script.") &&
+      (finding.id.endsWith(".pipe-to-shell") ||
+        finding.id.endsWith(".credential-access"))
+    ) {
+      return true;
+    }
+    return false;
+  });
 }
 
 function snippet(text: string, index: number) {

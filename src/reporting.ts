@@ -1,6 +1,6 @@
 import { join, relative } from "node:path";
 import type { AgentReview, Report } from "./core";
-import { REPORT_DIR, ROOT } from "./core";
+import { REPORT_DIR, ROOT, readConfig } from "./core";
 import {
   resolveAgentMode,
   runAgentReviews,
@@ -218,7 +218,7 @@ function intelligenceLines(report: Report) {
   const socket = report.intelligence.socket;
   if (socket) {
     lines.push(
-      `- Socket: ${socket.status}${typeof socket.supplyChainRisk === "number" ? `; supplyChainRisk=${socket.supplyChainRisk} (0=lowest risk, 1=highest risk; guard flags supplyChainRisk >= 0.3 (0=lowest, 1=highest))` : ""}${socket.message ? `; ${socket.message}` : ""}`,
+      `- Socket: ${socket.status}${typeof socket.supplyChainRisk === "number" ? `; supplyChainRisk=${socket.supplyChainRisk} (0=highest risk, 1=lowest risk / safest; guard flags supplyChainRisk < 0.5)` : ""}${socket.message ? `; ${socket.message}` : ""}`,
     );
     const components = socketRiskComponents(socket.rawScore).slice(0, 8);
     if (components.length)
@@ -320,14 +320,30 @@ export async function maybeRunConfiguredAgentReview(
   const reviews = await runAgentReviews(report, reportPath, agents);
   report.agentReviews = reviews;
   await emitReport(report, json, opts);
-  blockOnFailedReview(report.target, reviews);
+  await blockOnFailedReview(report.target, reviews);
 }
 
-export function blockOnFailedReview(target: string, reviews: AgentReview[]) {
-  const failed = reviews.find((review) => review.status !== "approved");
+export async function blockOnFailedReview(
+  target: string,
+  reviews: AgentReview[],
+) {
+  const config = await readConfig();
+  const strict =
+    config.preset === "strict-ci" || config.preset === "enterprise";
+  const failed = reviews.find((review) =>
+    strict
+      ? review.status !== "approved"
+      : review.status === "rejected" || review.status === "manual-review",
+  );
   if (failed) {
     throw new Error(
       `Blocked ${target}: ${failed.agent} returned ${failed.status}. See ${failed.outputPath}`,
+    );
+  }
+  const errors = reviews.filter((review) => review.status === "error");
+  for (const error of errors) {
+    console.error(
+      `warning: ${error.agent} review errored; continuing under ${config.preset} policy. See ${error.outputPath}`,
     );
   }
 }
