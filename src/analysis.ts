@@ -92,7 +92,7 @@ const PATTERNS_ALL: Array<[RegExp, string, Risk, string]> = [
 // Patterns only checked when the scope is a lifecycle script (not generic source files).
 const PATTERNS_SCRIPTS_ONLY: Array<[RegExp, string, Risk, string]> = [
   [
-    /(npmrc|\.ssh\/|id_rsa|AWS_SECRET|GITHUB_TOKEN|NPM_TOKEN|os\.homedir\(\)|~\/\.npmrc|\.npmrc|\.ssh\/id_rsa|process\.env\s*(?:\[[^\]]+\]|\.[A-Z0-9_]+))/i,
+    /(npmrc|\.ssh\/|id_rsa|AWS_SECRET|GITHUB_TOKEN|NPM_TOKEN|os\.homedir\(\)|~\/\.npmrc|\.npmrc|\.ssh\/id_rsa|process\.env\s*(?:\[[^\]]*(?:SECRET|TOKEN|KEY|PASSWORD|PASS|AUTH|CREDENTIAL)[^\]]*\]|\.(?:[A-Z0-9_]*(?:SECRET|TOKEN|KEY|PASSWORD|PASS|AUTH|CREDENTIAL)[A-Z0-9_]*)))/i,
     "credential-access",
     "high",
     "References credentials, sensitive key paths, or environment secrets in a lifecycle script.",
@@ -630,7 +630,10 @@ function inspectText(
   inMinifiedFile = false,
 ) {
   const patterns = isScript
-    ? [...PATTERNS_ALL, ...PATTERNS_SCRIPTS_ONLY]
+    ? [
+        ...PATTERNS_ALL.filter(([, id]) => id !== "credential-access"),
+        ...PATTERNS_SCRIPTS_ONLY,
+      ]
     : PATTERNS_ALL;
   for (const [pattern, id, severity, title] of patterns) {
     const match = text.match(pattern);
@@ -659,6 +662,12 @@ function hasBlockingFinding(findings: Finding[]): boolean {
     if (finding.id === "artifact.integrity-mismatch") return true;
     if (finding.id === "name.typosquat") return true;
     if (finding.id === "npm.signature.invalid") return true;
+    if (
+      finding.id === "socket.supply-chain-risk" &&
+      finding.severity === "high"
+    ) {
+      return true;
+    }
     if (finding.id.startsWith("osv.") && finding.severity === "high") {
       return true;
     }

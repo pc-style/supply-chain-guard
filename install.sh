@@ -165,9 +165,19 @@ else
   fi
 
   if [ -n "$SOCKET_TOKEN_INPUT" ]; then
+    printf "Paste Socket org slug, or press Enter to skip Socket scoring: "
+    SOCKET_ORG_INPUT=""
+    if ! { IFS= read -r SOCKET_ORG_INPUT < /dev/tty; } 2>/dev/null; then
+      IFS= read -r SOCKET_ORG_INPUT || true
+    fi
     umask 077
     # Quote the token safely so sourcing the env file cannot execute shell metacharacters.
-    printf 'export SOCKET_API_KEY=%s\n' "$(printf '%s' "$SOCKET_TOKEN_INPUT" | sed "s/'/'\\\\''/g; s/^/'/; s/$/'/")" > "$ENV_PATH"
+    {
+      printf 'export SOCKET_API_KEY=%s\n' "$(printf '%s' "$SOCKET_TOKEN_INPUT" | sed "s/'/'\\\\''/g; s/^/'/; s/$/'/")"
+      if [ -n "$SOCKET_ORG_INPUT" ]; then
+        printf 'export SOCKET_ORG_SLUG=%s\n' "$(printf '%s' "$SOCKET_ORG_INPUT" | sed "s/'/'\\\\''/g; s/^/'/; s/$/'/")"
+      fi
+    } > "$ENV_PATH"
     echo "Saved Socket token env to $ENV_PATH"
   elif [ ! -f "$ENV_PATH" ]; then
     umask 077
@@ -176,6 +186,7 @@ else
 # Create one at https://socket.dev/dashboard/settings/api-tokens
 # Recommended minimum scope: packages:list
 # export SOCKET_API_KEY="..."
+# export SOCKET_ORG_SLUG="..."
 EOF
   fi
 fi

@@ -249,18 +249,21 @@ export async function walk(dir: string): Promise<string[]> {
 
 export function normalizeAgentMode(value: string): AgentMode {
   if (value === "none" || value === "codex" || value === "pi") return value;
-  if (value === "both") return "none";
+  if (value === "both") {
+    throw new Error(
+      "agentReview 'both' was removed; choose one of: none, codex, pi",
+    );
+  }
   throw new Error("agentReview must be one of: none, codex, pi");
 }
 
 export function normalizePolicyPreset(value: string): PolicyPreset {
   if (value === "default" || value === "strict") return value;
-  if (
-    value === "quiet" ||
-    value === "strict-ci" ||
-    value === "enterprise" ||
-    value === "advisory"
-  ) {
+  if (value === "strict-ci" || value === "enterprise") {
+    console.error(`warning: preset '${value}' was removed; using strict.`);
+    return "strict";
+  }
+  if (value === "quiet" || value === "advisory") {
     console.error(`warning: preset '${value}' was removed; using default.`);
     return "default";
   }
@@ -268,7 +271,10 @@ export function normalizePolicyPreset(value: string): PolicyPreset {
   return "default";
 }
 
-export function normalizeSafeResolverMode(_value: string): SafeResolverMode {
+export function normalizeSafeResolverMode(value: string): SafeResolverMode {
+  if (value !== "off") {
+    console.error(`warning: safeResolver '${value}' was removed; using off.`);
+  }
   return "off";
 }
 
@@ -343,6 +349,7 @@ export async function writeLockfileBaseline(
 
 export function versionedPackageKey(entry: VersionedPackage) {
   return [
+    "v2",
     entry.name,
     entry.version,
     entry.resolved ?? "",
@@ -355,5 +362,14 @@ export function versionedPackageMap(entries: VersionedPackage[]) {
 }
 
 export function versionedPackageSet(entries: VersionedPackage[]) {
-  return new Set(entries.map(versionedPackageKey));
+  return new Set(
+    entries.flatMap((entry) => [
+      versionedPackageKey(entry),
+      legacyVersionedPackageKey(entry),
+    ]),
+  );
+}
+
+function legacyVersionedPackageKey(entry: VersionedPackage) {
+  return `${entry.name}@${entry.version}`;
 }

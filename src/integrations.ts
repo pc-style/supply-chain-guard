@@ -31,8 +31,8 @@ export async function checkSocket(
   const token = Bun.env.SOCKET_API_KEY;
   const orgSlug = Bun.env.SOCKET_ORG_SLUG;
   const url = orgSlug
-    ? `https://api.socket.dev/orgs/${encodeURIComponent(orgSlug)}/purl`
-    : "https://api.socket.dev/orgs/{org_slug}/purl";
+    ? `https://api.socket.dev/v0/orgs/${encodeURIComponent(orgSlug)}/purl`
+    : `https://api.socket.dev/v0/npm/${npmPackagePath(name, version)}/score`;
   if (options.offline) {
     return {
       status: "skipped",
@@ -52,31 +52,20 @@ export async function checkSocket(
         "SOCKET_API_KEY is not set; Socket intelligence was not queried.",
     };
   }
-  if (!orgSlug) {
-    return {
-      status: "skipped",
-      package: name,
-      version,
-      url,
-      message:
-        "SOCKET_ORG_SLUG is not set; Socket PURL intelligence was not queried.",
-    };
-  }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
   const purl = npmPurl(name, version);
   try {
     const res = await fetch(url, {
-      method: "POST",
+      method: orgSlug ? "POST" : "GET",
       signal: controller.signal,
       headers: {
         Authorization: `Basic ${Buffer.from(`${token}:`).toString("base64")}`,
         Accept: "application/json",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ components: [{ purl }] }),
+      ...(orgSlug ? { body: JSON.stringify({ components: [{ purl }] }) } : {}),
     });
-    clearTimeout(timeout);
     if (!res.ok) {
       const message =
         res.status === 401 || res.status === 403
@@ -89,7 +78,7 @@ export async function checkSocket(
       return { status: "error", package: name, version, url, message };
     }
     const data = (await res.json()) as Record<string, unknown>;
-    const score = socketScoreFromPurlResponse(data, purl);
+    const score = orgSlug ? socketScoreFromPurlResponse(data, purl) : data;
     const rawSupplyChainRisk = objectValue(score).supplyChainRisk;
     const nestedSupplyChainRiskScore = objectValue(rawSupplyChainRisk).score;
     const supplyChainRisk =
@@ -115,7 +104,16 @@ export async function checkSocket(
           ? error.message
           : String(error);
     return { status: "error", package: name, version, url, message };
+  } finally {
+    clearTimeout(timeout);
   }
+}
+
+function npmPackagePath(name: string, version: string) {
+  return `${name
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/")}/${encodeURIComponent(version)}`;
 }
 
 function npmPurl(name: string, version: string) {
@@ -344,7 +342,7 @@ function normalizedIntelligence(report: Report) {
       status: socket.status,
       supplyChainRisk: socket.supplyChainRisk,
       scale:
-        "0=lowest risk, 1=highest risk; do not treat as approval confidence",
+        "0=highest risk, 1=lowest risk / safest; do not treat as approval confidence",
       message: socket.message,
       components: socketRiskComponents(socket.rawScore).slice(0, 12),
     },

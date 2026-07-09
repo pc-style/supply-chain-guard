@@ -96,7 +96,7 @@ export async function reviewOrInstall(
     if (agentMode.length > 0) {
       const reviews = await runAgentReviews(report, reportPath, agentMode);
       report.agentReviews = reviews;
-      reportPath = await emitReport(report, json);
+      reportPath = await emitReport(report, json, { silent: json });
       await blockOnFailedReview(spec, reviews);
     }
     if (!json) printNextSteps(spec, reportPath, opts.install);
@@ -124,8 +124,14 @@ function installCommandFromOriginalArgs(
   const passthrough = argsWithoutPmFlag(args).filter(
     (arg) => arg !== "--json" && arg !== "--offline",
   );
+  const installArgs = translateDevFlag(pm, passthrough);
   const subcommand = pm === "npm" ? "install" : "add";
-  return { cmd: pm, args: [subcommand, ...passthrough] };
+  return { cmd: pm, args: [subcommand, ...installArgs] };
+}
+
+function translateDevFlag(pm: "bun" | "npm" | "pnpm" | "yarn", args: string[]) {
+  if (pm !== "npm" && pm !== "pnpm") return args;
+  return args.map((arg) => (arg === "--dev" ? "--save-dev" : arg));
 }
 
 function argsWithoutPmFlag(args: string[]) {
@@ -173,6 +179,7 @@ const DOCTOR_FIX_HINTS: Record<string, string> = {
   "policy preset": "scguard config --preset default",
   "SOCKET_API_KEY configured":
     "scguard config  # or visit socket.dev to get a key",
+  "SOCKET_ORG_SLUG configured": "export SOCKET_ORG_SLUG=<your-socket-org-slug>",
 };
 
 export async function doctorCommand() {
@@ -208,10 +215,20 @@ export async function doctorCommand() {
     detail: hookActive ? "active" : 'run: eval "$(scguard shell-hook)"',
   });
   const tokenSet = !!Bun.env.SOCKET_API_KEY;
+  const socketOrgSet = !!Bun.env.SOCKET_ORG_SLUG;
   checks.push({
     name: `SOCKET_API_KEY configured`,
     ok: tokenSet,
     detail: tokenSet ? "set" : "unset (Socket scoring disabled)",
+  });
+  checks.push({
+    name: `SOCKET_ORG_SLUG configured`,
+    ok: !tokenSet || socketOrgSet,
+    detail: socketOrgSet
+      ? "set"
+      : tokenSet
+        ? "unset (Socket PURL scoring disabled)"
+        : "not required unless SOCKET_API_KEY is set",
   });
   const config = await readConfig();
   checks.push({

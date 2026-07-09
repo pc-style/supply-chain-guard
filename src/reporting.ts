@@ -11,12 +11,12 @@ import { blockedLine, c, header, meta, okLine, riskRow, riskWord } from "./ui";
 export const REPORT_SCHEMA_URL =
   "https://raw.githubusercontent.com/pc-style/supply-chain-guard/main/docs/report-schema.json";
 
-export type EmitReportOptions = Record<string, never>;
+export type EmitReportOptions = { silent?: boolean };
 
 export async function emitReport(
   report: Report,
   json: boolean,
-  _opts: EmitReportOptions = {},
+  opts: EmitReportOptions = {},
 ) {
   const base = report.target.replace(/[^a-z0-9_.@-]+/gi, "_");
   const jsonPath = join(REPORT_DIR, `${base}-${Date.now()}.json`);
@@ -26,6 +26,8 @@ export async function emitReport(
     jsonPath.replace(/\.json$/, ".md"),
     renderMarkdown(report, jsonPath),
   );
+
+  if (opts.silent) return jsonPath;
 
   if (json) {
     console.log(JSON.stringify(serialized, null, 2));
@@ -308,7 +310,7 @@ export async function maybeRunConfiguredAgentReview(
   );
   const reviews = await runAgentReviews(report, reportPath, agents);
   report.agentReviews = reviews;
-  await emitReport(report, json, opts);
+  await emitReport(report, json, { ...opts, silent: json || opts.silent });
   await blockOnFailedReview(report.target, reviews);
 }
 
@@ -321,7 +323,9 @@ export async function blockOnFailedReview(
   const failed = reviews.find((review) =>
     strict
       ? review.status !== "approved"
-      : review.status === "rejected" || review.status === "manual-review",
+      : review.status === "rejected" ||
+        review.status === "manual-review" ||
+        review.status === "error",
   );
   if (failed) {
     throw new Error(

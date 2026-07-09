@@ -201,7 +201,7 @@ async function help() {
   item(
     "scguard config",
     "[--show] [--preset default|strict] [--agent none|codex|pi]",
-    "Set the default policy preset, safe resolver mode, and agent-review policy.",
+    "Set the default policy preset and agent-review policy.",
   );
 
   section("Setup");
@@ -238,6 +238,7 @@ async function help() {
   section("Environment");
   env("SCGUARD_BYPASS=1", "Skip the guard for a single command.");
   env("SOCKET_API_KEY", "Enable Socket.dev intelligence on npm scans.");
+  env("SOCKET_ORG_SLUG", "Use Socket PURL intelligence with your org slug.");
   env("SCGUARD_OFFLINE=1", "Disable all network calls (same as --offline).");
   env("NO_COLOR", "Disable ANSI colors (also honored by SCGUARD_NO_COLOR).");
   env("SCGUARD_NO_COLOR", "Disable ANSI colors in CLI output.");

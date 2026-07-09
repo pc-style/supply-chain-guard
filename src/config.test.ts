@@ -11,12 +11,10 @@ describe("config normalization", () => {
     expect(normalizeConfig(undefined)).toEqual(DEFAULT_CONFIG);
   });
 
-  test("maps removed agent mode to none", () => {
-    expect(normalizeConfig({ agentReview: "both" } as never)).toEqual({
-      agentReview: "none",
-      preset: "default",
-      safeResolver: "off",
-    });
+  test("removed both agent mode fails closed", () => {
+    expect(() => normalizeConfig({ agentReview: "both" } as never)).toThrow(
+      "agentReview 'both' was removed",
+    );
   });
 
   test("keeps explicit supported policy fields", () => {
@@ -38,7 +36,7 @@ describe("config normalization", () => {
     expect(readOption(["--preset", "strict"], "--preset")).toBe("strict");
   });
 
-  test("removed shell-session preset override maps to default", () => {
+  test("removed strict shell-session preset override maps to strict", () => {
     expect(
       applyConfigEnv(
         {
@@ -50,7 +48,7 @@ describe("config normalization", () => {
       ),
     ).toEqual({
       agentReview: "none",
-      preset: "default",
+      preset: "strict",
       safeResolver: "off",
     });
   });
