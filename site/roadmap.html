@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Roadmap — Supply Chain Guard</title>
+    <meta
+      name="description"
+      content="The scguard v0.2 roadmap with live progress: restore trust, cut scope, calibration corpus, proxy pivot, release."
+    />
+    <meta name="theme-color" content="#0f0d0d" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="icon" type="image/x-icon" href="./favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="manifest" href="./site.webmanifest" />
+    <link rel="canonical" href="https://scguard.pcstyle.dev/roadmap.html" />
+    <meta property="og:title" content="scguard v0.2 roadmap" />
+    <meta property="og:description" content="Live progress on the scguard v0.2 roadmap: what shipped, what's in progress, what's next." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://scguard.pcstyle.dev/roadmap.html" />
+    <meta property="og:image" content="https://scguard.pcstyle.dev/og-image.png" />
+    <link rel="stylesheet" href="./styles.css" />
+    <style>
+      .roadmap-wrap { max-width: 860px; margin: 0 auto; padding: 48px 24px 64px; }
+      .roadmap-intro { margin: 8px 0 40px; }
+      .phase { border: 1px solid rgba(0, 0, 0, 0.12); border-radius: 12px; padding: 24px; margin-bottom: 24px; background: #fff; }
+      .phase-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+      .phase-head h2 { margin: 0; font-size: 1.25rem; }
+      .status { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+      .status-done { background: #dcf5e3; color: #14663a; }
+      .status-progress { background: #fdf0d4; color: #8a5b00; }
+      .status-next { background: #ececec; color: #555; }
+      .phase-meta { font-size: 0.85rem; opacity: 0.65; margin: 0 0 12px; }
+      .task-list { list-style: none; padding: 0; margin: 12px 0 0; }
+      .task-list li { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; border-top: 1px dashed rgba(0, 0, 0, 0.08); font-size: 0.95rem; }
+      .task-list li:first-child { border-top: 0; }
+      .tick { flex: none; width: 1.1em; text-align: center; font-weight: 700; }
+      .tick-done { color: #14663a; }
+      .tick-progress { color: #8a5b00; }
+      .tick-todo { color: #999; }
+      .task-done span:last-child { opacity: 0.75; }
+      .exit { margin-top: 14px; font-size: 0.85rem; padding: 10px 14px; background: rgba(0, 0, 0, 0.04); border-radius: 8px; }
+      .exit strong { text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.08em; }
+      .roadmap-updated { font-size: 0.8rem; opacity: 0.6; margin-top: 24px; }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+    <header class="nav">
+      <div class="nav-inner">
+        <a class="brand" href="./index.html">supply chain guard</a>
+        <nav class="nav-links" aria-label="Primary">
+          <a href="./index.html#checks">checks</a>
+          <a href="./index.html#demo">demo</a>
+          <a href="./roadmap.html" aria-current="page">roadmap</a>
+        </nav>
+        <a class="nav-cta" href="https://github.com/pc-style/supply-chain-guard" target="_blank" rel="noreferrer">github</a>
+      </div>
+    </header>
+    <main id="main-content" class="roadmap-wrap">
+      <div class="panel-eyebrow">v0.2 roadmap</div>
+      <h1 class="section-title">look at the artifact before it touches your machine.</h1>
+      <p class="roadmap-intro">everything below either makes that sentence true, or deletes something that distracts from it. live progress; full detail in <a href="https://github.com/pc-style/supply-chain-guard/blob/main/docs/ROADMAP.md" target="_blank" rel="noreferrer">docs/ROADMAP.md</a>.</p>
+
+      <section class="phase">
+        <div class="phase-head"><h2>phase 0 — restore trust</h2><span class="status status-done">done</span></div>
+        <p class="phase-meta">the verdict has to be trustworthy before anything else matters.</p>
+        <ul class="task-list">
+          <li class="task-done"><span class="tick tick-done">✓</span><span>fix the inverted socket score (flag low safety scores, not high)</span></li>
+          <li class="task-done"><span class="tick tick-done">✓</span><span>migrate off the deprecated socket endpoint</span></li>
+          <li class="task-done"><span class="tick tick-done">✓</span><span>block only on hard signals; everything else is a warning</span></li>
+          <li class="task-done"><span class="tick tick-done">✓</span><span>demote noisy patterns outside lifecycle scripts</span></li>
+          <li class="task-done"><span class="tick tick-done">✓</span><span>agent error ≠ agent rejection, with a 120s timeout</span></li>
+          <li class="task-done"><span class="tick tick-done">✓</span><span>loud warnings on config parse failures</span></li>
+          <li class="task-done"><span class="tick tick-done">✓</span><span>green test suite</span></li>
+        </ul>
+        <div class="exit"><strong>exit criterion met</strong> — axios, chalk, left-pad, react, zod pass clean; malicious fixtures still block.</div>
+      </section>
+
+      <section class="phase">
+        <div class="phase-head"><h2>phase 1 — cut scope</h2><span class="status status-progress">in progress</span></div>
+        <p class="phase-meta">delete everything that distracts from the one-sentence product.</p>
+        <ul class="task-list">
+          <li class="task-done"><span class="tick tick-done">✓</span><span>presets collapsed to <code>default</code> and <code>strict</code></span></li>
+          <li class="task-done"><span class="tick tick-done">✓</span><span>active-incident advisory mode deleted</span></li>
+          <li class="task-done"><span class="tick tick-done">✓</span><span>npm staged-publish flow deleted</span></li>
+          <li class="task-done"><span class="tick tick-done">✓</span><span>sbom output deleted</span></li>
+          <li class="task-done"><span class="tick tick-done">✓</span><span>safe-resolver suggestions deleted</span></li>
+          <li class="task-done"><span class="tick tick-done">✓</span><span><code>scguard install</code> passes original args through the gate</span></li>
+          <li><span class="tick tick-todo">○</span><span>reduce <code>SCGUARD_*</code> env vars to ~4</span></li>
+          <li><span class="tick tick-todo">○</span><span>shrink <code>commands.ts</code> under ~700 lines; help fits one screen</span></li>
+        </ul>
+        <div class="exit"><strong>exit criterion</strong> — small surface, small <code>commands.ts</code>, docs describe only what remains.</div>
+      </section>
+
+      <section class="phase">
+        <div class="phase-head"><h2>phase 2 — calibration corpus</h2><span class="status status-done">done</span></div>
+        <p class="phase-meta">the test that defines what "correct" means for this product.</p>
+        <ul class="task-list">
+          <li class="task-done"><span class="tick tick-done">✓</span><span>benign corpus: top 50 npm packages must pass under default policy (offline fixtures)</span></li>
+          <li class="task-done"><span class="tick tick-done">✓</span><span>malicious corpus: real-world attack shapes must block</span></li>
+          <li class="task-done"><span class="tick tick-done">✓</span><span>both wired into <code>bun run check</code> and ci</span></li>
+        </ul>
+        <div class="exit"><strong>exit criterion met</strong> — a pattern change that reintroduces the axios false positive fails ci.</div>
+      </section>
+
+      <section class="phase">
+        <div class="phase-head"><h2>phase 3 — proxy pivot</h2><span class="status status-next">not started</span></div>
+        <p class="phase-meta">the v0.2 headline: replace command-line interception with protocol interception at the registry level.</p>
+        <ul class="task-list">
+          <li><span class="tick tick-todo">○</span><span>spike: bun http proxy for registry.npmjs.org gating tarball fetches</span></li>
+          <li><span class="tick tick-todo">○</span><span>decision gate on install-time latency</span></li>
+          <li><span class="tick tick-todo">○</span><span><code>scguard proxy start|stop|status|setup</code></span></li>
+          <li><span class="tick tick-todo">○</span><span>verdict cache keyed by tarball sha256</span></li>
+          <li><span class="tick tick-todo">○</span><span>auth / scoped-registry passthrough</span></li>
+          <li><span class="tick tick-todo">○</span><span>readable 403 block pages pointing at the report</span></li>
+        </ul>
+        <div class="exit"><strong>exit criterion</strong> — clean installs stream through the proxy; malicious tarballs refused with a report. no shell hook involved.</div>
+      </section>
+
+      <section class="phase">
+        <div class="phase-head"><h2>phase 4 — polish + release</h2><span class="status status-next">not started</span></div>
+        <p class="phase-meta">proxy-first docs, honest changelog, tag v0.2.0 once phases 0–3 hold.</p>
+        <ul class="task-list">
+          <li><span class="tick tick-todo">○</span><span>readme, site, and demos updated to the proxy-first story</span></li>
+          <li><span class="tick tick-todo">○</span><span><code>scguard doctor</code> verifies proxy + agent auth for real</span></li>
+          <li><span class="tick tick-todo">○</span><span>changelog + v0.2.0 tag</span></li>
+        </ul>
+      </section>
+
+      <p class="roadmap-updated">last updated 2026-07-09 · status reflects merged commits on <code>main</code>.</p>
+    </main>
+    <footer class="foot">
+      <span>supply chain guard · v0.1.1 · mit</span>
+      <div class="foot-links"><a href="./index.html">home</a><a href="https://github.com/pc-style/supply-chain-guard" target="_blank" rel="noopener noreferrer">github</a></div>
+    </footer>
+  </body>
+</html>
