@@ -34,3 +34,4 @@ All commands are documented in `package.json` scripts:
 - npm signature verification (`npm.signature.invalid`) may flag packages in environments without proper npm registry access; use `--offline` to skip network-dependent checks during local dev testing.
 - Optional integrations (Socket API, Codex CLI, PI CLI) degrade gracefully when unavailable. Tests do not require them.
 - The `.scguard/` directory is created at runtime for reports/cache/work and is git-ignored.
+- `site/roadmap.html` is a public progress mirror of `docs/ROADMAP.md`. When you complete a roadmap phase or task (or change the roadmap), update the corresponding status markers (done/in progress/not started, task ticks, "last updated" date) in `site/roadmap.html` in the same PR.
