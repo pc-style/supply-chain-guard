@@ -5,7 +5,6 @@ import {
   freshnessWindowHoursForPreset,
   scanNpm,
   scanNpmLockfileEntry,
-  scanNpmStage,
   scanVsix,
 } from "./analysis";
 import type {
@@ -22,16 +21,14 @@ import {
   commandExists,
   normalizeAgentMode,
   normalizePolicyPreset,
-  normalizeSafeResolverMode,
   REPORT_DIR,
   ROOT,
-  readActiveAdvisory,
   readConfig,
   readConfigFile,
   readLockfileBaseline,
   readOption,
-  requireActiveIncidentAcceptance,
   run,
+  versionedPackageKey,
   versionedPackageSet,
   WORK_DIR,
   writeConfig,
@@ -49,7 +46,7 @@ import {
   parseLockfile,
 } from "./lockfile";
 import { isOfflineMode, OFFLINE_ENV } from "./offline";
-import { buildInstallCommand, detectPackageManager } from "./pm";
+import { detectPackageManager } from "./pm";
 import { blockOnFailedReview, emitReport } from "./reporting";
 import { c, header, style, withSpinner } from "./ui";
 
@@ -76,19 +73,16 @@ export async function reviewOrInstall(
       `${opts.install ? "install" : "review"} requires at least one package spec, e.g. 'scguard ${opts.install ? "install" : "review"} react@18.3.1'`,
     );
   }
-  const dev = cleanArgs.includes("--dev") || cleanArgs.includes("-d");
   const agentMode = await resolveAgentMode(args);
-  const sbom = args.includes("--sbom");
   const json = args.includes("--json");
   const offline = isOfflineMode(args);
-  const emitOpts = { sbom };
   const passed: string[] = [];
   for (const spec of specs) {
     const report = await withSpinner(
       `Resolving graph and simulating install for ${spec}...`,
       () => scanNpm(spec, { offline }),
     );
-    let reportPath = await emitReport(report, json, emitOpts);
+    let reportPath = await emitReport(report, json);
     if (!report.summary.installAllowed) {
       throw new Error(
         [
@@ -102,14 +96,13 @@ export async function reviewOrInstall(
     if (agentMode.length > 0) {
       const reviews = await runAgentReviews(report, reportPath, agentMode);
       report.agentReviews = reviews;
-      reportPath = await emitReport(report, json, emitOpts);
+      reportPath = await emitReport(report, json);
       await blockOnFailedReview(spec, reviews);
     }
     if (!json) printNextSteps(spec, reportPath, opts.install);
     passed.push(spec);
   }
   if (!opts.install) return;
-  requireActiveIncidentAcceptance();
   const detected = detectPackageManager(process.cwd(), args);
   if (detected.source === "default") {
     console.error(
@@ -120,8 +113,33 @@ export async function reviewOrInstall(
       `${c.amber("scguard", true)} ${c.gray(`using ${detected.pm} (${detected.source}: ${detected.detail})`)}`,
     );
   }
-  const installCmd = buildInstallCommand(detected.pm, passed, { dev });
+  const installCmd = installCommandFromOriginalArgs(detected.pm, cleanArgs);
   await run(installCmd.cmd, installCmd.args);
+}
+
+function installCommandFromOriginalArgs(
+  pm: "bun" | "npm" | "pnpm" | "yarn",
+  args: string[],
+) {
+  const passthrough = argsWithoutPmFlag(args).filter(
+    (arg) => arg !== "--json" && arg !== "--offline",
+  );
+  const subcommand = pm === "npm" ? "install" : "add";
+  return { cmd: pm, args: [subcommand, ...passthrough] };
+}
+
+function argsWithoutPmFlag(args: string[]) {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--pm") {
+      i++;
+      continue;
+    }
+    if (arg.startsWith("--pm=")) continue;
+    out.push(arg);
+  }
+  return out;
 }
 
 function printNextSteps(
@@ -138,9 +156,8 @@ function printNextSteps(
     console.log(
       `    ${c.amber("$", true)} ${c.white(`scguard install ${spec}`)}`,
     );
-    console.log(`  ${c.gray("Or request a deeper agent review:")}`);
     console.log(
-      `    ${c.amber("$", true)} ${c.white(`scguard agent-review ${reportPath} --agent codex`)}`,
+      `  ${c.gray("Or re-run with --agent codex for a deeper review.")}`,
     );
   }
   console.log("");
@@ -200,7 +217,7 @@ export async function doctorCommand() {
   checks.push({
     name: `policy preset`,
     ok: true,
-    detail: `${config.preset} / safe-resolver=${config.safeResolver}`,
+    detail: config.preset,
   });
   checks.push({
     name: `default agent review`,
@@ -280,12 +297,6 @@ export async function guardCommand(args: string[]) {
     return;
   }
 
-  if (classification.kind === "npm-stage") {
-    await guardNpmStage(command, realArgs, classification.specs);
-    return;
-  }
-
-  const advisory = readActiveAdvisory();
   const action = String(classification.action);
   const isBareInstall =
     classification.specs.length === 0 &&
@@ -307,7 +318,6 @@ export async function guardCommand(args: string[]) {
     if (summary.failed.length > 0 && !allowScanFailures)
       throw lockfileFailedScanError(summary);
     if (summary.blockInstall) throw lockfileBlockingError(summary);
-    requireActiveIncidentAcceptance(advisory);
     await run(command, realArgs);
     return;
   }
@@ -324,27 +334,9 @@ export async function guardCommand(args: string[]) {
       );
       let reportPath = await emitReport(report, false);
       if (!report.summary.installAllowed) {
-        if (report.policy?.preset !== "enterprise") {
-          console.error(
-            `${c.amber("scguard", true)} ${c.gray("high-risk findings detected for")} ${c.white(spec)}`,
-          );
-          console.error(
-            "scguard: type exactly 'bypass' to proceed anyway (not recommended).",
-          );
-          const answer = prompt("> ");
-          if (answer !== "bypass") {
-            throw new Error(
-              `Blocked ${spec}: high-risk findings found. See ${reportPath}`,
-            );
-          }
-          console.error(
-            `${c.amber("scguard", true)} ${c.gray("bypass accepted; proceeding with install.")}`,
-          );
-        } else {
-          throw new Error(
-            `Blocked ${spec}: high-risk findings found. See ${reportPath}`,
-          );
-        }
+        throw new Error(
+          `Blocked ${spec}: high-risk findings found. See ${reportPath}`,
+        );
       }
       const agentMode = await resolveAgentMode(args.slice(1));
       if (agentMode.length > 0) {
@@ -355,8 +347,6 @@ export async function guardCommand(args: string[]) {
       }
     }
   }
-
-  requireActiveIncidentAcceptance(advisory);
 
   await run(command, realArgs);
 }
@@ -396,35 +386,6 @@ async function guardVsCodeExtension(
     reportPath = await emitReport(report, false);
     await blockOnFailedReview(target, reviews);
   }
-  requireActiveIncidentAcceptance();
-  await run(command, stripGuardOptions(args));
-}
-
-async function guardNpmStage(command: string, args: string[], specs: string[]) {
-  const stageId = specs[0];
-  console.error(
-    `scguard: npm staged publish approval detected: ${command} ${args.join(" ")}`,
-  );
-  console.error(
-    "scguard: staged packages must be downloaded and analyzed before approval.",
-  );
-  if (!stageId)
-    throw new Error("Blocked npm stage approve: no stage id found.");
-  const report = await scanNpmStage(stageId, { offline: isOfflineMode(args) });
-  let reportPath = await emitReport(report, false);
-  if (!report.summary.installAllowed) {
-    throw new Error(
-      `Blocked npm stage approve ${stageId}: high-risk findings found. See ${reportPath}`,
-    );
-  }
-  const agentMode = await resolveAgentMode(args);
-  if (agentMode.length > 0) {
-    const reviews = await runAgentReviews(report, reportPath, agentMode);
-    report.agentReviews = reviews;
-    reportPath = await emitReport(report, false);
-    await blockOnFailedReview(stageId, reviews);
-  }
-  requireActiveIncidentAcceptance();
   await run(command, stripGuardOptions(args));
 }
 
@@ -488,10 +449,10 @@ export async function scanLockfile(
   const baselinePath = lockfileBaselinePath(cwd);
   const baseline = await readLockfileBaseline(baselinePath);
   const offline = isOfflineMode(args);
-  const concurrency = Math.max(
-    1,
-    Number(Bun.env.SCGUARD_LOCKFILE_CONCURRENCY ?? 8),
-  );
+  const parsedConcurrency = Number(Bun.env.SCGUARD_LOCKFILE_CONCURRENCY ?? 8);
+  const concurrency = Number.isFinite(parsedConcurrency)
+    ? Math.max(1, parsedConcurrency)
+    : 8;
   const ageResults = await collectPackageAges(entries, offline, concurrency);
   const plan = planLockfileSelection(
     entries,
@@ -638,18 +599,12 @@ export async function scanLockfile(
       console.log(`    ${c.dim(`... and ${summary.failed.length - 5} more`)}`);
   }
   if (summary.blocked.length > 0) {
-    const label = summary.blockInstall
-      ? c.red("blocked ", true)
-      : c.amber("advisory", true);
-    const note = summary.blockInstall
-      ? "high-risk packages"
-      : "high-risk packages (non-blocking)";
     console.log(
-      `  ${label} ${c.white(String(summary.blocked.length))} ${c.gray(note)}`,
+      `  ${c.red("blocked ", true)} ${c.white(String(summary.blocked.length))} ${c.gray("high-risk packages")}`,
     );
     for (const b of summary.blocked) {
       console.log(
-        `    ${summary.blockInstall ? c.red("-", true) : c.amber("-", true)} ${c.white(`${b.name}@${b.version}`)} ${c.dim(b.reportPath)}`,
+        `    ${c.red("-", true)} ${c.white(`${b.name}@${b.version}`)} ${c.dim(b.reportPath)}`,
       );
     }
   }
@@ -726,13 +681,13 @@ function lockfileBlockingError(summary: LockfileScanSummary): Error {
 }
 
 export function shouldBlockLockfileInstall(
-  preset: PolicyPreset,
+  _preset: PolicyPreset,
   blockedCount: number,
   failedCount = 0,
   allowScanFailures = Bun.env.SCGUARD_ALLOW_SCAN_FAILURES === "1",
 ) {
   if (failedCount > 0 && !allowScanFailures) return true;
-  return preset !== "advisory" && blockedCount > 0;
+  return blockedCount > 0;
 }
 
 export function planLockfileSelection(
@@ -746,8 +701,8 @@ export function planLockfileSelection(
   const baselineSet = baseline ? versionedPackageSet(baseline.entries) : null;
   const windowHours = freshnessWindowHoursForPreset(preset);
   for (const entry of entries) {
-    const key = `${entry.name}@${entry.version}`;
-    const age = packageAges.get(key);
+    const key = versionedPackageKey(entry);
+    const age = packageAges.get(`${entry.name}@${entry.version}`);
     const versionAgeHours =
       age?.status === "checked" ? age.versionAgeHours : undefined;
     const fresh =
@@ -757,20 +712,8 @@ export function planLockfileSelection(
         versionAgeHours < windowHours);
     const changed = baselineSet ? !baselineSet.has(key) : false;
 
-    if (preset === "enterprise") {
+    if (!baselineSet) {
       selected.push({ entry, reason: "policy", packageAge: age });
-      continue;
-    }
-
-    if (!baselineSet && preset !== "quiet") {
-      selected.push({ entry, reason: "policy", packageAge: age });
-      continue;
-    }
-
-    if (preset === "quiet") {
-      if (fresh)
-        selected.push({ entry, reason: "fresh-version", packageAge: age });
-      else skipped.push({ entry, reason: "outside-fresh-window" });
       continue;
     }
 
@@ -841,17 +784,6 @@ function lockfileFailedScanError(summary: LockfileScanSummary): Error {
 
 export function classifyPackageCommand(command: string, args: string[]) {
   const base = basename(command);
-  if (base === "npm") {
-    const npmTokens = nonOptionTokens(args);
-    if (npmTokens[0] === "stage" && npmTokens[1] === "approve") {
-      return {
-        packageOperation: true,
-        kind: "npm-stage" as const,
-        action: "stage approve",
-        specs: npmTokens[2] ? [npmTokens[2]] : [],
-      };
-    }
-  }
   if (base === "code" && args.includes("--install-extension")) {
     const index = args.indexOf("--install-extension");
     return {
@@ -970,8 +902,6 @@ export function stripGuardOptions(args: string[]) {
       continue;
     }
     if (arg.startsWith("--agent=") || arg.startsWith("--pm=")) continue;
-    // --sbom is scguard-only. --offline is passed through (bun/npm/pnpm/yarn all honour it).
-    if (arg === "--sbom") continue;
     stripped.push(arg);
   }
   return stripped;
@@ -1024,23 +954,16 @@ export async function configCommand(args: string[]) {
     return;
   }
   const explicitPreset = readOption(args, "--preset");
-  const explicitSafeResolver = readOption(args, "--safe-resolver");
   const explicitAgent = readOption(args, "--agent");
-  if (
-    explicitPreset !== undefined ||
-    explicitSafeResolver !== undefined ||
-    explicitAgent !== undefined
-  ) {
+  if (explicitPreset !== undefined || explicitAgent !== undefined) {
     const config = await readConfigFile();
     if (explicitPreset !== undefined)
       config.preset = normalizePolicyPreset(explicitPreset);
-    if (explicitSafeResolver !== undefined)
-      config.safeResolver = normalizeSafeResolverMode(explicitSafeResolver);
     if (explicitAgent !== undefined)
       config.agentReview = normalizeAgentMode(explicitAgent);
     await writeConfig(config);
     console.log(
-      `${style.check()} ${c.green("saved", true)} ${c.gray("policy:")} ${c.amber(config.preset, true)} ${c.gray("/")} ${c.amber(config.safeResolver, true)} ${c.gray("agent:")} ${c.amber(config.agentReview, true)}`,
+      `${style.check()} ${c.green("saved", true)} ${c.gray("policy:")} ${c.amber(config.preset, true)} ${c.gray("agent:")} ${c.amber(config.agentReview, true)}`,
     );
     return;
   }
@@ -1049,7 +972,7 @@ export async function configCommand(args: string[]) {
   config.agentReview = await agentConfigTui(config.agentReview);
   await writeConfig(config);
   console.log(
-    `${style.check()} ${c.green("saved", true)} ${c.gray("policy:")} ${c.amber(config.preset, true)} ${c.gray("/")} ${c.amber(config.safeResolver, true)} ${c.gray("agent:")} ${c.amber(config.agentReview, true)}`,
+    `${style.check()} ${c.green("saved", true)} ${c.gray("policy:")} ${c.amber(config.preset, true)} ${c.gray("agent:")} ${c.amber(config.agentReview, true)}`,
   );
 }
 
@@ -1063,35 +986,17 @@ async function presetConfigTui(current: PolicyPreset): Promise<PolicyPreset> {
           "Fresh versions under 7 days plus packages changed from the prior baseline.",
       },
       {
-        value: "quiet",
-        label: "quiet",
-        detail: "Only versions published in the last 24 hours.",
-      },
-      {
-        value: "strict-ci",
-        label: "strict-ci",
-        detail:
-          "Changed lockfile entries plus fresh/risky versions under 30 days.",
-      },
-      {
-        value: "enterprise",
-        label: "enterprise",
-        detail:
-          "Broad lockfile coverage with online intelligence when available.",
-      },
-      {
-        value: "advisory",
-        label: "advisory",
-        detail:
-          "Same scope as default, but findings never block a bare install.",
+        value: "strict",
+        label: "strict",
+        detail: "Changed lockfile entries plus fresh versions under 30 days.",
       },
     ];
   renderPresetConfigMenu(options, current);
-  const answer = prompt("Select 1-5, or press Enter to keep current:");
+  const answer = prompt("Select 1-2, or press Enter to keep current:");
   if (!answer?.trim()) return current;
   const index = Number(answer.trim()) - 1;
   if (!Number.isInteger(index) || !options[index]) {
-    throw new Error("Config cancelled: expected a number from 1 to 5");
+    throw new Error("Config cancelled: expected a number from 1 to 2");
   }
   return options[index].value;
 }
@@ -1113,18 +1018,13 @@ async function agentConfigTui(current: AgentMode): Promise<AgentMode> {
       label: "PI",
       detail: "Run pi -p with no tools for every scan/install gate.",
     },
-    {
-      value: "both",
-      label: "Codex + PI",
-      detail: "Require both agents to approve before install continues.",
-    },
   ];
   renderAgentConfigMenu(options, current);
-  const answer = prompt("Select 1-4, or press Enter to keep current:");
+  const answer = prompt("Select 1-3, or press Enter to keep current:");
   if (!answer?.trim()) return current;
   const index = Number(answer.trim()) - 1;
   if (!Number.isInteger(index) || !options[index]) {
-    throw new Error("Config cancelled: expected a number from 1 to 4");
+    throw new Error("Config cancelled: expected a number from 1 to 3");
   }
   return options[index].value;
 }

@@ -358,7 +358,6 @@ function normalizedIntelligence(report: Report) {
     npmSignature: report.intelligence.npmSignature,
     typosquat: report.intelligence.typosquat,
     packageAge: report.intelligence.packageAge,
-    activeAdvisory: report.intelligence.activeAdvisory,
   };
 }
 
@@ -398,8 +397,7 @@ export function parseAgentMode(args: string[]): AgentName[] {
   if (!value || value === "none") return [];
   if (value === "codex") return ["codex"];
   if (value === "pi") return ["pi"];
-  if (value === "both") return ["codex", "pi"];
-  throw new Error("--agent must be one of: none, codex, pi, both");
+  throw new Error("--agent must be one of: none, codex, pi");
 }
 
 export async function resolveAgentMode(args: string[]): Promise<AgentName[]> {
@@ -411,7 +409,6 @@ export async function resolveAgentMode(args: string[]): Promise<AgentName[]> {
 export function agentsFromMode(mode: AgentMode): AgentName[] {
   if (mode === "codex") return ["codex"];
   if (mode === "pi") return ["pi"];
-  if (mode === "both") return ["codex", "pi"];
   return [];
 }
 

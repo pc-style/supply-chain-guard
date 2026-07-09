@@ -5,13 +5,8 @@ import { dirname, join } from "node:path";
 
 export type Risk = "low" | "medium" | "high";
 
-export type PolicyPreset =
-  | "quiet"
-  | "default"
-  | "strict-ci"
-  | "enterprise"
-  | "advisory";
-export type SafeResolverMode = "off" | "suggest";
+export type PolicyPreset = "default" | "strict";
+export type SafeResolverMode = "off";
 export type ScanReason =
   | "fresh-version"
   | "changed-lockfile-entry"
@@ -21,6 +16,8 @@ export type ScanReason =
 export type VersionedPackage = {
   name: string;
   version: string;
+  resolved?: string;
+  integrity?: string;
 };
 
 export type Finding = {
@@ -34,7 +31,7 @@ export type Finding = {
 export type Report = {
   schemaVersion: 1;
   target: string;
-  kind: "npm" | "npm-stage" | "vsix";
+  kind: "npm" | "vsix";
   generatedAt: string;
   artifact: {
     source: string;
@@ -43,7 +40,6 @@ export type Report = {
   };
   intelligence: {
     socket?: SocketResult;
-    activeAdvisory?: ActiveAdvisory;
     osv?: OsvResult;
     npmSignature?: NpmSignatureResult;
     typosquat?: TyposquatResult;
@@ -77,7 +73,7 @@ export type SafeResolverSuggestion = {
 };
 
 export type AgentName = "codex" | "pi";
-export type AgentMode = "none" | AgentName | "both";
+export type AgentMode = "none" | AgentName;
 
 export type Config = {
   agentReview: AgentMode;
@@ -101,13 +97,6 @@ export type SocketResult = {
   supplyChainRisk?: number;
   rawScore?: unknown;
   message?: string;
-};
-
-export type ActiveAdvisory = {
-  active: boolean;
-  source: "env";
-  message: string;
-  until?: string;
 };
 
 export type OsvVulnerability = {
@@ -184,7 +173,7 @@ export const CONFIG_PATH = join(CONFIG_DIR, "config.json");
 export const DEFAULT_CONFIG: Config = {
   agentReview: "none",
   preset: "default",
-  safeResolver: "suggest",
+  safeResolver: "off",
 };
 
 export async function ensureDirs() {
@@ -259,34 +248,28 @@ export async function walk(dir: string): Promise<string[]> {
 }
 
 export function normalizeAgentMode(value: string): AgentMode {
-  if (
-    value === "none" ||
-    value === "codex" ||
-    value === "pi" ||
-    value === "both"
-  )
-    return value;
-  throw new Error("agentReview must be one of: none, codex, pi, both");
+  if (value === "none" || value === "codex" || value === "pi") return value;
+  if (value === "both") return "none";
+  throw new Error("agentReview must be one of: none, codex, pi");
 }
 
 export function normalizePolicyPreset(value: string): PolicyPreset {
+  if (value === "default" || value === "strict") return value;
   if (
     value === "quiet" ||
-    value === "default" ||
     value === "strict-ci" ||
     value === "enterprise" ||
     value === "advisory"
   ) {
-    return value;
+    console.error(`warning: preset '${value}' was removed; using default.`);
+    return "default";
   }
-  throw new Error(
-    "preset must be one of: quiet, default, strict-ci, enterprise, advisory",
-  );
+  console.error(`warning: unknown preset '${value}'; using default.`);
+  return "default";
 }
 
-export function normalizeSafeResolverMode(value: string): SafeResolverMode {
-  if (value === "off" || value === "suggest") return value;
-  throw new Error("safeResolver must be one of: off, suggest");
+export function normalizeSafeResolverMode(_value: string): SafeResolverMode {
+  return "off";
 }
 
 export function normalizeConfig(raw: Partial<Config> | undefined): Config {
@@ -359,7 +342,12 @@ export async function writeLockfileBaseline(
 }
 
 export function versionedPackageKey(entry: VersionedPackage) {
-  return `${entry.name}@${entry.version}`;
+  return [
+    entry.name,
+    entry.version,
+    entry.resolved ?? "",
+    entry.integrity ?? "",
+  ].join("@");
 }
 
 export function versionedPackageMap(entries: VersionedPackage[]) {
@@ -368,41 +356,4 @@ export function versionedPackageMap(entries: VersionedPackage[]) {
 
 export function versionedPackageSet(entries: VersionedPackage[]) {
   return new Set(entries.map(versionedPackageKey));
-}
-
-export function readActiveAdvisory(): ActiveAdvisory {
-  const message = Bun.env.SCGUARD_ACTIVE_INCIDENT;
-  const until = Bun.env.SCGUARD_ACTIVE_INCIDENT_UNTIL;
-  if (!message) {
-    return {
-      active: false,
-      source: "env",
-      message: "No active supply-chain advisory configured.",
-    };
-  }
-  if (until && Date.parse(until) < Date.now()) {
-    return {
-      active: false,
-      source: "env",
-      message: `Configured advisory expired at ${until}.`,
-      until,
-    };
-  }
-  return { active: true, source: "env", message, until };
-}
-
-export function requireActiveIncidentAcceptance(
-  advisory = readActiveAdvisory(),
-) {
-  if (!advisory.active) return;
-  console.error(`scguard: ACTIVE SUPPLY-CHAIN ADVISORY: ${advisory.message}`);
-  console.error(
-    "scguard: type exactly 'I accept the active supply-chain risk' to continue.",
-  );
-  const answer = prompt("> ");
-  if (answer !== "I accept the active supply-chain risk") {
-    throw new Error(
-      "Package operation cancelled because active incident risk was not accepted.",
-    );
-  }
 }

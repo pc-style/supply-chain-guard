@@ -6,20 +6,17 @@ import {
   runAgentReviews,
   writeAgentPrompt,
 } from "./integrations";
-import { buildCycloneDxSbom, sbomPathFor } from "./sbom";
 import { blockedLine, c, header, meta, okLine, riskRow, riskWord } from "./ui";
 
 export const REPORT_SCHEMA_URL =
   "https://raw.githubusercontent.com/pc-style/supply-chain-guard/main/docs/report-schema.json";
 
-export type EmitReportOptions = {
-  sbom?: boolean;
-};
+export type EmitReportOptions = Record<string, never>;
 
 export async function emitReport(
   report: Report,
   json: boolean,
-  opts: EmitReportOptions = {},
+  _opts: EmitReportOptions = {},
 ) {
   const base = report.target.replace(/[^a-z0-9_.@-]+/gi, "_");
   const jsonPath = join(REPORT_DIR, `${base}-${Date.now()}.json`);
@@ -29,12 +26,7 @@ export async function emitReport(
     jsonPath.replace(/\.json$/, ".md"),
     renderMarkdown(report, jsonPath),
   );
-  await writeAgentPrompt(report, "codex", jsonPath);
-  await writeAgentPrompt(report, "pi", jsonPath);
-  if (opts.sbom) {
-    const sbom = buildCycloneDxSbom(report);
-    await Bun.write(sbomPathFor(jsonPath), JSON.stringify(sbom, null, 2));
-  }
+
   if (json) {
     console.log(JSON.stringify(serialized, null, 2));
     return jsonPath;
@@ -93,9 +85,6 @@ function renderHumanReport(report: Report, jsonPath: string) {
   if (report.policy) {
     meta("preset", report.policy.preset);
     meta("scan-reason", report.policy.scanReason);
-    if (report.policy.safeResolverSuggestion) {
-      meta("safe-resolver", report.policy.safeResolverSuggestion.message);
-    }
   }
 
   if (report.findings.length > 0) {
@@ -160,8 +149,7 @@ export function renderMarkdown(report: Report, reportPath: string) {
     "",
     `- Active preset: ${report.policy?.preset ?? "default"}`,
     `- Scan reason: ${report.policy?.scanReason ?? "direct-review"}`,
-    `- Safe resolver: ${report.policy?.safeResolverSuggestion?.message ?? (report.policy?.safeResolver ? report.policy.safeResolver : "off")}`,
-    "",
+
     "## Intelligence",
     "",
     ...intelligenceLines(report),
@@ -243,9 +231,7 @@ function intelligenceLines(report: Report) {
   lines.push(
     `- Package age: ${report.intelligence.packageAge?.status === "checked" ? `package=${report.intelligence.packageAge.packageAgeDays ?? "?"}d; version=${report.intelligence.packageAge.versionAgeHours ?? "?"}h` : (report.intelligence.packageAge?.status ?? "not-applicable")}`,
   );
-  lines.push(
-    `- Active advisory: ${report.intelligence.activeAdvisory?.active ?? false}`,
-  );
+
   return lines;
 }
 
@@ -317,6 +303,9 @@ export async function maybeRunConfiguredAgentReview(
 ) {
   const agents = await resolveAgentMode(args);
   if (agents.length === 0) return;
+  await Promise.all(
+    agents.map((agent) => writeAgentPrompt(report, agent, reportPath)),
+  );
   const reviews = await runAgentReviews(report, reportPath, agents);
   report.agentReviews = reviews;
   await emitReport(report, json, opts);
@@ -328,8 +317,7 @@ export async function blockOnFailedReview(
   reviews: AgentReview[],
 ) {
   const config = await readConfig();
-  const strict =
-    config.preset === "strict-ci" || config.preset === "enterprise";
+  const strict = config.preset === "strict";
   const failed = reviews.find((review) =>
     strict
       ? review.status !== "approved"

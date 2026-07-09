@@ -65,18 +65,6 @@ describe("security regressions", () => {
     );
   });
 
-  test("npm stage approve is detected with leading global options", () => {
-    const result = classifyPackageCommand("npm", [
-      "--otp=123456",
-      "stage",
-      "approve",
-      "stage-abc",
-    ]);
-    expect(result.packageOperation).toBe(true);
-    expect(result.kind).toBe("npm-stage");
-    expect(result.specs).toEqual(["stage-abc"]);
-  });
-
   test("npm install with --prefix is still a guarded package operation", () => {
     const result = classifyPackageCommand("npm", [
       "--prefix",
