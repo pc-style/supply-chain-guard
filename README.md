@@ -132,9 +132,9 @@ Tune parallelism with `SCGUARD_LOCKFILE_CONCURRENCY` (default `8`).
 
 For now, `code --install-extension publisher.name` is blocked because the VS Code CLI would download the extension before this tool can inspect it. Download the `.vsix`, scan it, then install the reviewed artifact.
 
-## Socket API Token
+## Socket API Token And Org Slug
 
-During install, you can paste a Socket API token. The installer stores it in `~/.config/supply-chain-guard/env` so scans can include Socket's package score. Create a token here:
+During install, you can paste a Socket API token and org slug. The installer stores them in `~/.config/supply-chain-guard/env` so scans can include Socket's package score. Create a token here:
 
 https://socket.dev/dashboard/settings/api-tokens
 
@@ -195,7 +195,7 @@ If the text does not match exactly, the install or update is cancelled.
 - executable `bin` entries
 - large files and unusual packed contents
 - VS Code extension activation events, main/browser entry points, scripts, and dependency metadata
-- Socket.dev package score when `SOCKET_API_KEY` is configured
+- Socket.dev package score when `SOCKET_API_KEY` and `SOCKET_ORG_SLUG` are configured
 
 This first version is conservative. It blocks `high` risk installs, warns at `medium`, and always leaves report artifacts behind for human or agent review.
 
