@@ -80,7 +80,7 @@ bun run capture-demos      # JSON only (site live terminal)
 
 - Bun
 - Git, `tar`, and `unzip`
-- Optional: Socket API token with `packages:list`
+- Optional: Socket credentials via `SOCKET_API_KEY` and `SOCKET_ORG_SLUG`, with `packages:list` access
 - Optional: `codex` and/or `pi` CLIs for agent review
 - Optional for npm staged publishing: npm CLI `11.15.0+` and Node `22.14.0+`
 
