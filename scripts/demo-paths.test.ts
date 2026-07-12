@@ -19,4 +19,25 @@ describe("normalizeDemoWorkspacePath", () => {
       "./demo\n./demo",
     );
   });
+
+  test("normalizes an exact workspace alias", () => {
+    const workspace = "/var/folders/xy/scguard-demo-123";
+
+    expect(normalizeDemoWorkspacePath(workspace, workspace)).toBe("./demo");
+  });
+
+  test("normalizes a path below the workspace alias", () => {
+    const workspace = "/var/folders/xy/scguard-demo-123";
+
+    expect(
+      normalizeDemoWorkspacePath(`${workspace}/report.json`, workspace),
+    ).toBe("./demo/report.json");
+  });
+
+  test("does not normalize a sibling path with the workspace as a prefix", () => {
+    const workspace = "/var/folders/xy/scguard-demo-123";
+    const sibling = "/var/folders/xy/scguard-demo-1234/report.json";
+
+    expect(normalizeDemoWorkspacePath(sibling, workspace)).toBe(sibling);
+  });
 });

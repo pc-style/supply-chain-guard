@@ -15,7 +15,15 @@ export function normalizeDemoWorkspacePath(
   return [...aliases]
     .sort((a, b) => b.length - a.length)
     .reduce(
-      (normalized, alias) => normalized.replaceAll(alias, displayWorkspace),
+      (normalized, alias) =>
+        normalized.replace(
+          new RegExp(`${escapeRegExp(alias)}(?=$|[/\\\\])`, "gm"),
+          displayWorkspace,
+        ),
       text,
     );
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
