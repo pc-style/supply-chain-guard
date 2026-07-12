@@ -53,24 +53,10 @@
     "packageJson": { "type": "object", "additionalProperties": true },
     "policy": {
       "type": "object",
-      "required": ["preset", "safeResolver", "scanReason"],
+      "required": ["preset", "scanReason"],
       "properties": {
         "preset": { "type": "string", "enum": ["default", "strict"] },
-        "safeResolver": { "type": "string", "enum": ["off"] },
-        "scanReason": { "type": "string", "enum": ["fresh-version", "changed-lockfile-entry", "direct-review", "policy"] },
-        "safeResolverSuggestion": {
-          "type": "object",
-          "required": ["status", "message", "resolved"],
-          "properties": {
-            "status": { "type": "string", "enum": ["suggested", "none", "unavailable"] },
-            "message": { "type": "string" },
-            "requested": { "type": "string" },
-            "resolved": { "type": "string" },
-            "suggested": { "type": "string" },
-            "freshnessWindowHours": { "type": "integer", "minimum": 0 }
-          },
-          "additionalProperties": true
-        }
+        "scanReason": { "type": "string", "enum": ["fresh-version", "changed-lockfile-entry", "direct-review", "policy"] }
       },
       "additionalProperties": true
     },

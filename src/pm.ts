@@ -90,39 +90,3 @@ export function detectPackageManager(
     detail: "no lockfile or packageManager field detected",
   };
 }
-
-/**
- * Build the install command for a package manager.
- * Returns `{ cmd, args }` suitable for `Bun.spawn` / `run()`.
- */
-export function buildInstallCommand(
-  pm: PackageManager,
-  specs: string[],
-  opts: { dev?: boolean } = {},
-): {
-  cmd: string;
-  args: string[];
-} {
-  switch (pm) {
-    case "bun":
-      return {
-        cmd: "bun",
-        args: ["add", ...(opts.dev ? ["--dev"] : []), ...specs],
-      };
-    case "npm":
-      return {
-        cmd: "npm",
-        args: ["install", ...(opts.dev ? ["--save-dev"] : []), ...specs],
-      };
-    case "pnpm":
-      return {
-        cmd: "pnpm",
-        args: ["add", ...(opts.dev ? ["--save-dev"] : []), ...specs],
-      };
-    case "yarn":
-      return {
-        cmd: "yarn",
-        args: ["add", ...(opts.dev ? ["--dev"] : []), ...specs],
-      };
-  }
-}

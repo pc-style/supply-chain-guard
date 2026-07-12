@@ -19,7 +19,6 @@ const baseEnv: Record<string, string> = {
   FORCE_COLOR: "3",
   SCGUARD_OFFLINE: "1",
   SCGUARD_SHELL_HOOK_ACTIVE: "1",
-  SCGUARD_SUPPRESS_HOOK_WARN: "1",
   TERM: "xterm-256color",
   COLORTERM: "truecolor",
 };

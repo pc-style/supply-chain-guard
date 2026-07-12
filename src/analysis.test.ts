@@ -7,7 +7,6 @@ import {
   isAllowedPinnedTarballUrl,
   isRegistryVersionSpec,
   parsePackageSpec,
-  pickSafeResolverSuggestion,
   resolveNpmVersion,
 } from "./analysis";
 
@@ -133,93 +132,6 @@ describe("isAllowedPinnedTarballUrl", () => {
       ),
     ).toBe(false);
     expect(isAllowedPinnedTarballUrl("not-a-url")).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Safe resolver
-// ---------------------------------------------------------------------------
-describe("pickSafeResolverSuggestion", () => {
-  test("suggests the newest older stable version that still satisfies the spec", () => {
-    const suggestion = pickSafeResolverSuggestion({
-      name: "demo",
-      requestedVersion: "^1.0.0",
-      resolvedVersion: "1.2.0",
-      freshnessWindowHours: 24,
-      versions: ["1.0.0", "1.1.0", "1.2.0"],
-      publishTimes: {
-        "1.0.0": "2026-01-01T00:00:00Z",
-        "1.1.0": "2026-01-02T00:00:00Z",
-        "1.2.0": new Date(Date.now() - 2 * 3_600_000).toISOString(),
-      },
-    });
-    expect(suggestion.status).toBe("suggested");
-    expect(suggestion.suggested).toBe("1.1.0");
-  });
-
-  test("ignores prereleases unless they were explicitly requested", () => {
-    const suggestion = pickSafeResolverSuggestion({
-      name: "demo",
-      requestedVersion: "^1.0.0",
-      resolvedVersion: "1.2.0",
-      freshnessWindowHours: 24,
-      versions: ["1.1.0", "1.2.0", "1.3.0-beta.1"],
-      publishTimes: {
-        "1.1.0": "2026-01-01T00:00:00Z",
-        "1.2.0": new Date(Date.now() - 2 * 3_600_000).toISOString(),
-        "1.3.0-beta.1": "2026-01-03T00:00:00Z",
-      },
-    });
-    expect(suggestion.status).toBe("suggested");
-    expect(suggestion.suggested).toBe("1.1.0");
-  });
-
-  test("uses npm range semantics for OR and x-range fallback candidates", () => {
-    const suggestion = pickSafeResolverSuggestion({
-      name: "demo",
-      requestedVersion: "1.x || ^2.0.0",
-      resolvedVersion: "2.1.0",
-      freshnessWindowHours: 24,
-      versions: ["1.4.0", "2.0.0", "2.1.0"],
-      publishTimes: {
-        "1.4.0": "2026-01-01T00:00:00Z",
-        "2.0.0": "2026-01-02T00:00:00Z",
-        "2.1.0": new Date(Date.now() - 2 * 3_600_000).toISOString(),
-      },
-    });
-    expect(suggestion.status).toBe("suggested");
-    expect(suggestion.suggested).toBe("2.0.0");
-  });
-
-  test("reports no suggestion when no older satisfying version exists", () => {
-    const suggestion = pickSafeResolverSuggestion({
-      name: "demo",
-      requestedVersion: "1.2.0",
-      resolvedVersion: "1.2.0",
-      freshnessWindowHours: 24,
-      versions: ["1.2.0", "1.1.0"],
-      publishTimes: {
-        "1.2.0": new Date(Date.now() - 2 * 3_600_000).toISOString(),
-        "1.1.0": "2026-01-01T00:00:00Z",
-      },
-    });
-    expect(suggestion.status).toBe("none");
-  });
-
-  test("does not rewrite install args", () => {
-    const installArgs = ["react@^18.0.0"];
-    pickSafeResolverSuggestion({
-      name: "react",
-      requestedVersion: "^18.0.0",
-      resolvedVersion: "18.3.1",
-      freshnessWindowHours: 24,
-      versions: ["18.2.0", "18.3.1"],
-      publishTimes: {
-        "18.2.0": "2026-01-01T00:00:00Z",
-        "18.3.1": new Date(Date.now() - 2 * 3_600_000).toISOString(),
-      },
-    });
-    expect(installArgs).toEqual(["react@^18.0.0"]);
   });
 });
 

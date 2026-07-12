@@ -21,8 +21,8 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "typecheck": "bunx tsc --noEmit",
-    "test": "bun test src/analysis.test.ts src/config.test.ts src/integrations.test.ts src/intelligence.test.ts src/lockfile.test.ts src/lockfile-policy.test.ts src/pm.test.ts src/fixtures.test.ts src/corpus.test.ts src/security-regression.test.ts src/skill-install.test.ts scripts/ansi-html.test.ts",
-    "check": "bun run lint && bun run typecheck && bun run src/cli.ts --help && bun run src/cli.ts self-test && bun run test",
+    "test": "XDG_CONFIG_HOME=/dev/null bun test src/analysis.test.ts src/config.test.ts src/integrations.test.ts src/intelligence.test.ts src/lockfile.test.ts src/lockfile-policy.test.ts src/pm.test.ts src/fixtures.test.ts src/corpus.test.ts src/security-regression.test.ts src/skill-install.test.ts scripts/ansi-html.test.ts",
+    "check": "bun run lint && bun run typecheck && bun run src/cli.ts --help && XDG_CONFIG_HOME=/dev/null bun run src/cli.ts self-test && bun run test",
     "capture-demos": "bun run scripts/capture-demos.ts",
     "demo-screenshots": "bun run scripts/capture-demos.ts && bun run scripts/generate-demo-screenshots.mjs"
   },

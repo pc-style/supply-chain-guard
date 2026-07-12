@@ -1,10 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  applyConfigEnv,
-  DEFAULT_CONFIG,
-  normalizeConfig,
-  readOption,
-} from "./core";
+import { DEFAULT_CONFIG, normalizeConfig, readOption } from "./core";
 
 describe("config normalization", () => {
   test("defaults are minimal", () => {
@@ -22,12 +17,10 @@ describe("config normalization", () => {
       normalizeConfig({
         agentReview: "codex",
         preset: "strict",
-        safeResolver: "off",
       }),
     ).toEqual({
       agentReview: "codex",
       preset: "strict",
-      safeResolver: "off",
     });
   });
 
@@ -36,20 +29,13 @@ describe("config normalization", () => {
     expect(readOption(["--preset", "strict"], "--preset")).toBe("strict");
   });
 
-  test("removed strict shell-session preset override maps to strict", () => {
+  test("silently drops legacy safeResolver config", () => {
     expect(
-      applyConfigEnv(
-        {
-          agentReview: "none",
-          preset: "strict",
-          safeResolver: "off",
-        },
-        "enterprise",
-      ),
-    ).toEqual({
-      agentReview: "none",
-      preset: "strict",
-      safeResolver: "off",
-    });
+      normalizeConfig({
+        agentReview: "none",
+        preset: "default",
+        safeResolver: "suggest",
+      }),
+    ).toEqual(DEFAULT_CONFIG);
   });
 });
