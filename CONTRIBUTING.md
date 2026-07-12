@@ -16,7 +16,7 @@ cd supply-chain-guard
 bun install
 ```
 
-Optional: copy `.env.example` to `.env` and set `SOCKET_API_KEY` when testing Socket integration locally. The CLI works without it.
+Optional: copy `.env.example` to `.env` and set `SOCKET_API_KEY` and `SOCKET_ORG_SLUG` when testing Socket integration locally. The CLI works without them.
 
 To run the CLI locally without installing it globally:
 

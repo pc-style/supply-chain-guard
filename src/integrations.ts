@@ -26,13 +26,13 @@ import topNpmPackages from "./data/top-npm-packages.json";
 export async function checkSocket(
   name: string,
   version: string,
-  options: { offline?: boolean } = {},
+  options: { offline?: boolean; fetch?: typeof globalThis.fetch } = {},
 ): Promise<SocketResult> {
   const token = Bun.env.SOCKET_API_KEY;
   const orgSlug = Bun.env.SOCKET_ORG_SLUG;
   const url = orgSlug
     ? `https://api.socket.dev/v0/orgs/${encodeURIComponent(orgSlug)}/purl`
-    : `https://api.socket.dev/v0/npm/${npmPackagePath(name, version)}/score`;
+    : undefined;
   if (options.offline) {
     return {
       status: "skipped",
@@ -52,19 +52,28 @@ export async function checkSocket(
         "SOCKET_API_KEY is not set; Socket intelligence was not queried.",
     };
   }
+  if (!url) {
+    return {
+      status: "skipped",
+      package: name,
+      version,
+      message:
+        "SOCKET_ORG_SLUG is not set; Socket intelligence was not queried.",
+    };
+  }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
   const purl = npmPurl(name, version);
   try {
-    const res = await fetch(url, {
-      method: orgSlug ? "POST" : "GET",
+    const res = await (options.fetch ?? fetch)(url, {
+      method: "POST",
       signal: controller.signal,
       headers: {
         Authorization: `Basic ${Buffer.from(`${token}:`).toString("base64")}`,
         Accept: "application/json",
         "Content-Type": "application/json",
       },
-      ...(orgSlug ? { body: JSON.stringify({ components: [{ purl }] }) } : {}),
+      body: JSON.stringify({ components: [{ purl }] }),
     });
     if (!res.ok) {
       const message =
@@ -78,7 +87,7 @@ export async function checkSocket(
       return { status: "error", package: name, version, url, message };
     }
     const data = (await res.json()) as Record<string, unknown>;
-    const score = orgSlug ? socketScoreFromPurlResponse(data, purl) : data;
+    const score = socketScoreFromPurlResponse(data, purl);
     const rawSupplyChainRisk = objectValue(score).supplyChainRisk;
     const nestedSupplyChainRiskScore = objectValue(rawSupplyChainRisk).score;
     const supplyChainRisk =
@@ -107,13 +116,6 @@ export async function checkSocket(
   } finally {
     clearTimeout(timeout);
   }
-}
-
-function npmPackagePath(name: string, version: string) {
-  return `${name
-    .split("/")
-    .map((part) => encodeURIComponent(part))
-    .join("/")}/${encodeURIComponent(version)}`;
 }
 
 function npmPurl(name: string, version: string) {

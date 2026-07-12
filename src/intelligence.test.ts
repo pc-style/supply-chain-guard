@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import {
   checkOsv,
   checkPackageAge,
@@ -8,6 +8,16 @@ import {
   levenshtein,
   verifyNpmSignatures,
 } from "./integrations";
+
+const originalSocketApiKey = Bun.env.SOCKET_API_KEY;
+const originalSocketOrgSlug = Bun.env.SOCKET_ORG_SLUG;
+
+afterEach(() => {
+  if (originalSocketApiKey === undefined) delete Bun.env.SOCKET_API_KEY;
+  else Bun.env.SOCKET_API_KEY = originalSocketApiKey;
+  if (originalSocketOrgSlug === undefined) delete Bun.env.SOCKET_ORG_SLUG;
+  else Bun.env.SOCKET_ORG_SLUG = originalSocketOrgSlug;
+});
 
 // ---------------------------------------------------------------------------
 // computeCvssV3BaseScore — CVSS v3 vector parsing
@@ -148,6 +158,66 @@ describe("offline mode shortcircuits", () => {
       { offline: true },
     );
     expect(r.status).toBe("skipped");
+  });
+});
+
+describe("checkSocket", () => {
+  test("uses only the org-scoped PURL endpoint", async () => {
+    Bun.env.SOCKET_API_KEY = "socket-test-token";
+    Bun.env.SOCKET_ORG_SLUG = "test org";
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    const fetchMock: typeof fetch = Object.assign(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        requests.push({ url: String(input), init });
+        return Response.json({ score: { supplyChainRisk: 0.91 } });
+      },
+      { preconnect: fetch.preconnect },
+    );
+
+    const result = await checkSocket("@scope/package", "1.2.3", {
+      fetch: fetchMock,
+    });
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].url).toBe(
+      "https://api.socket.dev/v0/orgs/test%20org/purl",
+    );
+    expect(requests[0].url).not.toContain("/v0/npm/");
+    expect(requests[0].init?.method).toBe("POST");
+    expect(requests[0].init?.headers).toEqual({
+      Authorization: `Basic ${Buffer.from("socket-test-token:").toString("base64")}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    });
+    expect(requests[0].init?.body).toBe(
+      JSON.stringify({
+        components: [{ purl: "pkg:npm/%40scope/package@1.2.3" }],
+      }),
+    );
+    expect(result.status).toBe("checked");
+    expect(result.supplyChainRisk).toBe(0.91);
+  });
+
+  test("skips without a request when the org slug is missing", async () => {
+    Bun.env.SOCKET_API_KEY = "socket-test-token";
+    delete Bun.env.SOCKET_ORG_SLUG;
+    let fetched = false;
+    const fetchMock: typeof fetch = Object.assign(
+      async () => {
+        fetched = true;
+        return Response.json({});
+      },
+      { preconnect: fetch.preconnect },
+    );
+
+    const result = await checkSocket("react", "18.3.1", {
+      fetch: fetchMock,
+    });
+
+    expect(fetched).toBe(false);
+    expect(result.status).toBe("skipped");
+    expect(result.url).toBeUndefined();
+    expect(result.message).toContain("SOCKET_ORG_SLUG");
   });
 });
 
