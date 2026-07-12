@@ -155,8 +155,11 @@ export const CONFIG_ENV_PATH = join(
   "supply-chain-guard",
   "env",
 );
+export function configBaseDir(xdgConfigHome: string | undefined, home: string) {
+  return xdgConfigHome?.trim() || join(home, ".config");
+}
 export const CONFIG_DIR = join(
-  Bun.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"),
+  configBaseDir(Bun.env.XDG_CONFIG_HOME, homedir()),
   "supply-chain-guard",
 );
 export const CONFIG_PATH = join(CONFIG_DIR, "config.json");

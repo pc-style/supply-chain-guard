@@ -173,7 +173,7 @@ export async function scanNpmLockfileEntry(
   options: { offline?: boolean; packageAge?: PackageAgeResult } = {},
 ): Promise<Report> {
   const spec = `${entry.name}@${entry.version}`;
-  if (entry.resolved) {
+  if (entry.resolved && /^https?:\/\//i.test(entry.resolved)) {
     return scanNpm(spec, {
       offline: options.offline,
       packageAge: options.packageAge,

@@ -10,6 +10,7 @@ export {
   isOffline,
   lockfileBaselinePath,
   nonOptionTokens,
+  packageManagerProjectDir,
   planLockfileSelection,
   reviewOrInstall,
   scanLockfile,

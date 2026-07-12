@@ -299,7 +299,10 @@ export async function guardCommand(args: string[]) {
   );
 
   if (isBareInstall) {
-    const summary = await scanLockfile(process.cwd(), args.slice(1));
+    const summary = await scanLockfile(
+      packageManagerProjectDir(command, realArgs, process.cwd()),
+      args.slice(1),
+    );
     if (summary.failed.length > 0) throw lockfileFailedScanError(summary);
     if (summary.blockInstall) throw lockfileBlockingError(summary);
     await run(command, realArgs);
@@ -809,15 +812,41 @@ export function classifyPackageCommand(command: string, args: string[]) {
     "ci",
   ]);
   const packageManagers = new Set(["bun", "npm", "pnpm", "yarn"]);
+  const bareYarnInstall =
+    base === "yarn" &&
+    !sub &&
+    !args.some((arg) =>
+      ["--help", "-h", "--version", "-v", "-V"].includes(arg),
+    );
   const packageOperation =
-    packageManagers.has(base) && !!sub && installActions.has(sub);
+    packageManagers.has(base) &&
+    ((!!sub && installActions.has(sub)) || bareYarnInstall);
   const specs = packageOperation ? extractSpecs(base, args) : [];
   return {
     packageOperation,
     kind: "npm" as const,
-    action: sub ?? "run",
+    action: sub ?? (bareYarnInstall ? "install" : "run"),
     specs,
   };
+}
+
+export function packageManagerProjectDir(
+  command: string,
+  args: string[],
+  cwd: string,
+): string {
+  const base = basename(command).replace(/\.exe$/i, "");
+  if (base !== "npm") return cwd;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    let value: string | undefined;
+    if (arg === "--prefix" || arg === "-C") value = args[i + 1];
+    else if (arg.startsWith("--prefix=")) value = arg.slice(9);
+    else if (arg.startsWith("-C=")) value = arg.slice(3);
+    if (!value || value.startsWith("-")) continue;
+    return resolve(cwd, value);
+  }
+  return cwd;
 }
 
 export function findPackageSubcommand(args: string[]): string | undefined {
