@@ -7,6 +7,7 @@ import { copyFile, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ansiLinesToHtml } from "./ansi-html";
+import { normalizeDemoWorkspacePath } from "./demo-paths";
 
 const ROOT = join(import.meta.dir, "..");
 const CLI = join(ROOT, "src", "cli.ts");
@@ -19,7 +20,6 @@ const baseEnv: Record<string, string> = {
   FORCE_COLOR: "3",
   SCGUARD_OFFLINE: "1",
   SCGUARD_SHELL_HOOK_ACTIVE: "1",
-  SCGUARD_SUPPRESS_HOOK_WARN: "1",
   TERM: "xterm-256color",
   COLORTERM: "truecolor",
 };
@@ -65,8 +65,7 @@ function normalizeOutput(
 ): string {
   const displayWs = "./demo";
   return sanitizeForDemo(
-    text
-      .replaceAll(ws, displayWs)
+    normalizeDemoWorkspacePath(text, ws, displayWs)
       .replace(/\/tmp\/scguard-demo-[a-z0-9-]+/g, displayWs)
       .replace(
         /\.scguard\/reports\/[^\s]+?-\d+\.(json|md|txt)/g,

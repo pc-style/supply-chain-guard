@@ -6,7 +6,6 @@ import { dirname, join } from "node:path";
 export type Risk = "low" | "medium" | "high";
 
 export type PolicyPreset = "default" | "strict";
-export type SafeResolverMode = "off";
 export type ScanReason =
   | "fresh-version"
   | "changed-lockfile-entry"
@@ -58,18 +57,7 @@ export type Report = {
 
 export type ReportPolicy = {
   preset: PolicyPreset;
-  safeResolver: SafeResolverMode;
   scanReason: ScanReason;
-  safeResolverSuggestion?: SafeResolverSuggestion;
-};
-
-export type SafeResolverSuggestion = {
-  status: "suggested" | "none" | "unavailable";
-  message: string;
-  requested?: string;
-  resolved: string;
-  suggested?: string;
-  freshnessWindowHours?: number;
 };
 
 export type AgentName = "codex" | "pi";
@@ -78,7 +66,6 @@ export type AgentMode = "none" | AgentName;
 export type Config = {
   agentReview: AgentMode;
   preset: PolicyPreset;
-  safeResolver: SafeResolverMode;
 };
 
 export type AgentReview = {
@@ -168,12 +155,17 @@ export const CONFIG_ENV_PATH = join(
   "supply-chain-guard",
   "env",
 );
-export const CONFIG_DIR = join(homedir(), ".config", "supply-chain-guard");
+export function configBaseDir(xdgConfigHome: string | undefined, home: string) {
+  return xdgConfigHome?.trim() || join(home, ".config");
+}
+export const CONFIG_DIR = join(
+  configBaseDir(Bun.env.XDG_CONFIG_HOME, homedir()),
+  "supply-chain-guard",
+);
 export const CONFIG_PATH = join(CONFIG_DIR, "config.json");
 export const DEFAULT_CONFIG: Config = {
   agentReview: "none",
   preset: "default",
-  safeResolver: "off",
 };
 
 export async function ensureDirs() {
@@ -271,14 +263,9 @@ export function normalizePolicyPreset(value: string): PolicyPreset {
   return "default";
 }
 
-export function normalizeSafeResolverMode(value: string): SafeResolverMode {
-  if (value !== "off") {
-    console.error(`warning: safeResolver '${value}' was removed; using off.`);
-  }
-  return "off";
-}
-
-export function normalizeConfig(raw: Partial<Config> | undefined): Config {
+export function normalizeConfig(
+  raw: (Partial<Config> & { safeResolver?: unknown }) | undefined,
+): Config {
   const config = raw && typeof raw === "object" ? raw : {};
   return {
     agentReview: normalizeAgentMode(
@@ -289,20 +276,7 @@ export function normalizeConfig(raw: Partial<Config> | undefined): Config {
     preset: normalizePolicyPreset(
       typeof config.preset === "string" ? config.preset : DEFAULT_CONFIG.preset,
     ),
-    safeResolver: normalizeSafeResolverMode(
-      typeof config.safeResolver === "string"
-        ? config.safeResolver
-        : DEFAULT_CONFIG.safeResolver,
-    ),
   };
-}
-
-export function applyConfigEnv(
-  config: Config,
-  presetOverride = Bun.env.SCGUARD_PRESET,
-): Config {
-  if (!presetOverride) return config;
-  return { ...config, preset: normalizePolicyPreset(presetOverride) };
 }
 
 export async function readConfigFile(): Promise<Config> {
@@ -321,7 +295,7 @@ export async function readConfigFile(): Promise<Config> {
 }
 
 export async function readConfig(): Promise<Config> {
-  return applyConfigEnv(await readConfigFile());
+  return readConfigFile();
 }
 
 export async function writeConfig(config: Config) {
@@ -362,14 +336,9 @@ export function versionedPackageMap(entries: VersionedPackage[]) {
 }
 
 export function versionedPackageSet(entries: VersionedPackage[]) {
-  return new Set(
-    entries.flatMap((entry) => [
-      versionedPackageKey(entry),
-      legacyVersionedPackageKey(entry),
-    ]),
-  );
+  return new Set(entries.map(versionedPackageKey));
 }
 
-function legacyVersionedPackageKey(entry: VersionedPackage) {
+export function legacyVersionedPackageKey(entry: VersionedPackage) {
   return `${entry.name}@${entry.version}`;
 }

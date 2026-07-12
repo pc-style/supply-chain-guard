@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Socket intelligence now uses only the org-scoped PURL endpoint and safely skips when `SOCKET_ORG_SLUG` is missing.
+- Completed Phase 1 scope reduction: help now fits one screen, command exports use a small facade, and public runtime controls are limited to bypass, offline, debug, and color settings.
+- Lockfile baselines now detect resolved URL or integrity changes at the same package version while preserving legacy name-and-version baselines.
+- `scguard install` preserves the user's package-manager flags and options after the review gate.
+- README, environment examples, and report schema now describe only the current command and policy surface.
 - Pinned Bun to `1.3.14` in `package.json` `engines` and CI.
 - README Development section documents clone, install, local CLI, and the pre-PR gate.
 - CONTRIBUTING smoke-test example uses `--offline`; test paths and check steps match `package.json`.
@@ -28,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- Safe Resolver runtime fields, suggestions, implementation, and obsolete tests.
+- Deprecated install-command rebuilding and undocumented runtime environment overrides.
 - Standalone accessibility policy, issue template, checklist, and site-only axe CI workflow.
 
 ## [0.1.1] - 2026-05-25

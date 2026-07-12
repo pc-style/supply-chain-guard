@@ -60,12 +60,11 @@ block; `bun run check` is green.
 
 ---
 
-## Phase 1 — Cut scope (about a week)
+## Phase 1 - Cut scope (complete)
 
-The repo is a platform wrapped around a tripwire. Deleting from working code
-is cheap; every removed feature removes a policy interaction nobody can
-reason about. Write the v0.2 spec first (one page, the sentence at the top of
-this file plus the kept command list), then delete against it.
+Phase 1 removed obsolete policy interactions and reduced the public surface to
+the artifact review gate. The roadmap command list remains the core product;
+`clean` and `skill install` remain documented maintenance utilities.
 
 ### Keep
 
@@ -80,27 +79,24 @@ this file plus the kept command list), then delete against it.
 | Active-incident advisory mode (`SCGUARD_ACTIVE_INCIDENT*`) | Delete. |
 | npm staged-publish flow (`scan-stage`, `npm stage approve` handling) | Delete (revisit if npm staging becomes mainstream). |
 | SBOM output (`--sbom`, `src/sbom.ts`) | Delete or park behind an `experimental` doc. |
-| Safe resolver suggestions | Delete; fold "this version is very fresh" into the existing `version.new` finding. |
+| Safe resolver suggestions | Deleted; freshness remains in the existing `version.new` finding. |
 | Agent mode `both` | Delete; one agent per run. |
 | `add` deprecated alias, `agent-prompt`, `agent-review` as public commands | Remove from help; keep internals if the review flow needs them. |
 | Unconditional codex+pi prompt file emission in `src/reporting.ts` | Emit prompts only when an agent review is configured. |
-| `SCGUARD_*` env vars | Reduce from 13 to roughly: `SCGUARD_BYPASS`, `SCGUARD_OFFLINE`, `SCGUARD_DEBUG`, `SCGUARD_NO_COLOR`. |
+| `SCGUARD_*` env vars | Reduced to `SCGUARD_BYPASS`, `SCGUARD_OFFLINE`, `SCGUARD_DEBUG`, and `SCGUARD_NO_COLOR`, plus private shell-hook state. |
 
 ### Also in this phase (small correctness fixes that survive any pivot)
 
-- Lockfile baseline: compare `resolved` + `integrity`, not just
-  `name@version` (`versionedPackageKey` in `src/core.ts`) — a swapped tarball
-  URL at the same version is exactly the attack this tool exists for.
-- `scguard install`: stop rebuilding the install command from scratch
-  (`buildInstallCommand` in `src/pm.ts`); pass the user's original args
-  through after the gate, or document loudly that only specs survive.
-- Validate `SCGUARD_LOCKFILE_CONCURRENCY` parsing (NaN guard) while it still
-  exists in `src/commands.ts`.
+- Lockfile baselines compare `resolved` and `integrity` while accepting legacy
+  name-and-version entries.
+- `scguard install` passes the user's original package-manager options through
+  after removing guard-only flags.
+- Lockfile scan concurrency is fixed internally instead of exposed as policy.
 
-### Exit criterion
+### Exit criterion met
 
 Help output fits one screen. `src/commands.ts` shrinks substantially (target:
-under ~700 lines). Docs/README describe only what remains. `bun run check`
+under ~700 lines). Docs/README describe only what remains. `bun run check` is
 green.
 
 ---

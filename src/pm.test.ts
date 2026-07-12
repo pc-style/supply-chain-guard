@@ -2,12 +2,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  buildInstallCommand,
-  detectPackageManager,
-  isPackageManager,
-  readPmFlag,
-} from "./pm";
+import { installCommandFromOriginalArgs } from "./commands";
+import { detectPackageManager, isPackageManager, readPmFlag } from "./pm";
 
 let workDir = "";
 
@@ -118,41 +114,53 @@ describe("detectPackageManager", () => {
   });
 });
 
-describe("buildInstallCommand", () => {
-  test("bun add", () => {
-    expect(buildInstallCommand("bun", ["react"])).toEqual({
+describe("installCommandFromOriginalArgs", () => {
+  test("preserves Bun install flags and options", () => {
+    expect(
+      installCommandFromOriginalArgs("bun", [
+        "react@19",
+        "--exact",
+        "--registry",
+        "https://registry.example",
+        "--ignore-scripts",
+      ]),
+    ).toEqual({
       cmd: "bun",
-      args: ["add", "react"],
+      args: [
+        "add",
+        "react@19",
+        "--exact",
+        "--registry",
+        "https://registry.example",
+        "--ignore-scripts",
+      ],
     });
   });
-  test("bun add --dev", () => {
-    expect(buildInstallCommand("bun", ["react"], { dev: true })).toEqual({
-      cmd: "bun",
-      args: ["add", "--dev", "react"],
-    });
-  });
-  test("npm install --save-dev", () => {
-    expect(buildInstallCommand("npm", ["react"], { dev: true })).toEqual({
+
+  test("removes guard flags while preserving npm options", () => {
+    expect(
+      installCommandFromOriginalArgs("npm", [
+        "react@19",
+        "--pm",
+        "npm",
+        "--agent=codex",
+        "--offline",
+        "--json",
+        "--dev",
+        "--legacy-peer-deps",
+        "--workspace",
+        "web",
+      ]),
+    ).toEqual({
       cmd: "npm",
-      args: ["install", "--save-dev", "react"],
-    });
-  });
-  test("pnpm add --save-dev", () => {
-    expect(buildInstallCommand("pnpm", ["react"], { dev: true })).toEqual({
-      cmd: "pnpm",
-      args: ["add", "--save-dev", "react"],
-    });
-  });
-  test("yarn add --dev", () => {
-    expect(buildInstallCommand("yarn", ["react"], { dev: true })).toEqual({
-      cmd: "yarn",
-      args: ["add", "--dev", "react"],
-    });
-  });
-  test("multiple specs", () => {
-    expect(buildInstallCommand("npm", ["react", "lodash@4"])).toEqual({
-      cmd: "npm",
-      args: ["install", "react", "lodash@4"],
+      args: [
+        "install",
+        "react@19",
+        "--save-dev",
+        "--legacy-peer-deps",
+        "--workspace",
+        "web",
+      ],
     });
   });
 });

@@ -112,9 +112,7 @@ export function parseNpm(text: string): LockfileEntry[] {
       out.push({
         name,
         version,
-        ...(typeof info.resolved === "string"
-          ? { resolved: info.resolved }
-          : {}),
+        ...(isFetchUrl(info.resolved) ? { resolved: info.resolved } : {}),
         ...(typeof info.integrity === "string"
           ? { integrity: info.integrity }
           : {}),
@@ -183,9 +181,7 @@ function walkNpmV1(
       out.push({
         name: alias?.name ?? name,
         version: alias?.version ?? info.version,
-        ...(typeof info.resolved === "string"
-          ? { resolved: info.resolved }
-          : {}),
+        ...(isFetchUrl(info.resolved) ? { resolved: info.resolved } : {}),
         ...(typeof info.integrity === "string"
           ? { integrity: info.integrity }
           : {}),
@@ -206,13 +202,25 @@ export function parseBun(text: string): LockfileEntry[] {
   if (packagesIdx < 0) return out;
   const rest = text.slice(packagesIdx);
   // Match: "anything": [ "name@version", ...
-  const re = /"([^"\n]+)"\s*:\s*\[\s*"((?:@[^@"/]+\/)?[^@"/]+)@([^"\]]+)"/g;
+  const re =
+    /"([^"\n]+)"\s*:\s*\[\s*"((?:@[^@"/]+\/)?[^@"/]+)@([^"\]]+)"(?:\s*,\s*"([^"]*)")?/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(rest))) {
     const name = m[2];
     const version = m[3];
     if (!isValidVersion(version)) continue;
-    out.push({ name, version });
+    const lineEnd = rest.indexOf("\n", re.lastIndex);
+    const entryTail = rest.slice(
+      re.lastIndex,
+      lineEnd < 0 ? rest.length : lineEnd,
+    );
+    const integrity = entryTail.match(/"(sha(?:256|384|512)-[^"]+)"/)?.[1];
+    out.push({
+      name,
+      version,
+      ...(isFetchUrl(m[4]) ? { resolved: m[4] } : {}),
+      ...(integrity ? { integrity } : {}),
+    });
   }
   return dedupe(out);
 }
@@ -224,19 +232,29 @@ export function parsePnpm(text: string): LockfileEntry[] {
   const out: LockfileEntry[] = [];
   const lines = text.split("\n");
   let inPackages = false;
+  let current: LockfileEntry | undefined;
   for (const rawLine of lines) {
     if (/^[a-zA-Z]/.test(rawLine)) {
       inPackages = rawLine.startsWith("packages:");
+      current = undefined;
       continue;
     }
     if (!inPackages) continue;
     const m = rawLine.match(
       /^\s{2}'?\/?((?:@[^@/]+\/)?[^@/]+)@([^:'\s]+)'?:\s*$/,
     );
-    if (!m) continue;
-    const version = m[2];
-    if (!isValidVersion(version)) continue;
-    out.push({ name: m[1], version });
+    if (m) {
+      const version = m[2];
+      if (!isValidVersion(version)) continue;
+      current = { name: m[1], version };
+      out.push(current);
+      continue;
+    }
+    if (!current) continue;
+    const integrity = rawLine.match(/integrity:\s*['"]?([^,'"}\s]+)/)?.[1];
+    const tarball = rawLine.match(/tarball:\s*['"]?([^,'"}\s]+)/)?.[1];
+    if (integrity) current.integrity = integrity;
+    if (isFetchUrl(tarball)) current.resolved = tarball;
   }
   return dedupe(out);
 }
@@ -272,9 +290,30 @@ export function parseYarn(text: string): LockfileEntry[] {
     if (!versionMatch) continue;
     const version = versionMatch[1].trim().replace(/^"|"$/g, "");
     if (!isValidVersion(version)) continue;
-    out.push({ name, version });
+    const resolved = block
+      .match(/\n\s+resolved[:\s]+"?([^"\n]+)"?/)?.[1]
+      ?.trim();
+    const integrity = block
+      .match(/\n\s+integrity[:\s]+"?([^"\n]+)"?/)?.[1]
+      ?.trim();
+    out.push({
+      name,
+      version,
+      ...(isFetchUrl(resolved) ? { resolved } : {}),
+      ...(integrity ? { integrity } : {}),
+    });
   }
   return dedupe(out);
+}
+
+function isFetchUrl(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
 }
 
 function isValidVersion(v: string): boolean {

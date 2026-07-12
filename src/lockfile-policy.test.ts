@@ -21,12 +21,10 @@ function ageError() {
 
 const originalCwd = process.cwd();
 const originalNoColor = Bun.env.SCGUARD_NO_COLOR;
-const originalPreset = Bun.env.SCGUARD_PRESET;
 
 afterEach(() => {
   process.chdir(originalCwd);
   restoreEnv("SCGUARD_NO_COLOR", originalNoColor);
-  restoreEnv("SCGUARD_PRESET", originalPreset);
 });
 
 function restoreEnv(name: string, value: string | undefined) {
@@ -101,6 +99,84 @@ describe("lockfile policy selection", () => {
     expect(selection.selected[0]?.reason).toBe("changed-lockfile-entry");
   });
 
+  test("selects the same version when the resolved URL changes", () => {
+    const selection = planLockfileSelection(
+      [
+        {
+          name: "swapped-pkg",
+          version: "1.0.0",
+          resolved: "https://registry.npmjs.org/swapped-pkg/-/new.tgz",
+          integrity: "sha512-same",
+        },
+      ],
+      {
+        schemaVersion: 1,
+        generatedAt: "2026-05-22T00:00:00Z",
+        entries: [
+          {
+            name: "swapped-pkg",
+            version: "1.0.0",
+            resolved: "https://registry.npmjs.org/swapped-pkg/-/old.tgz",
+            integrity: "sha512-same",
+          },
+        ],
+      },
+      "default",
+      new Map([["swapped-pkg@1.0.0", age(240)]]),
+    );
+    expect(selection.selected[0]?.reason).toBe("changed-lockfile-entry");
+  });
+
+  test("selects the same version when integrity changes", () => {
+    const selection = planLockfileSelection(
+      [
+        {
+          name: "swapped-pkg",
+          version: "1.0.0",
+          resolved: "https://registry.npmjs.org/swapped-pkg/-/pkg.tgz",
+          integrity: "sha512-new",
+        },
+      ],
+      {
+        schemaVersion: 1,
+        generatedAt: "2026-05-22T00:00:00Z",
+        entries: [
+          {
+            name: "swapped-pkg",
+            version: "1.0.0",
+            resolved: "https://registry.npmjs.org/swapped-pkg/-/pkg.tgz",
+            integrity: "sha512-old",
+          },
+        ],
+      },
+      "default",
+      new Map([["swapped-pkg@1.0.0", age(240)]]),
+    );
+    expect(selection.selected[0]?.reason).toBe("changed-lockfile-entry");
+  });
+
+  test("treats legacy name and version baselines as unchanged", () => {
+    const selection = planLockfileSelection(
+      [
+        {
+          name: "legacy-pkg",
+          version: "1.0.0",
+          resolved: "https://registry.npmjs.org/legacy-pkg/-/pkg.tgz",
+          integrity: "sha512-current",
+        },
+      ],
+      {
+        schemaVersion: 1,
+        generatedAt: "2026-05-22T00:00:00Z",
+        entries: [{ name: "legacy-pkg", version: "1.0.0" }],
+      },
+      "default",
+      new Map([["legacy-pkg@1.0.0", age(240)]]),
+    );
+    expect(selection.selected).toHaveLength(0);
+    expect(selection.skipped[0]?.reason).toBe("baseline-unchanged");
+  });
+
   test("strict uses a 30-day freshness window once a baseline exists", () => {
     const baseline = {
       schemaVersion: 1 as const,
@@ -152,10 +228,9 @@ describe("lockfile policy selection", () => {
     expect(shouldBlockLockfileInstall("strict", 1)).toBe(true);
   });
 
-  test("scan failures block unless explicitly allowed", () => {
-    expect(shouldBlockLockfileInstall("default", 0, 1, false)).toBe(true);
-    expect(shouldBlockLockfileInstall("strict", 0, 1, false)).toBe(true);
-    expect(shouldBlockLockfileInstall("default", 0, 1, true)).toBe(false);
+  test("scan failures always block", () => {
+    expect(shouldBlockLockfileInstall("default", 0, 1)).toBe(true);
+    expect(shouldBlockLockfileInstall("strict", 0, 1)).toBe(true);
   });
 });
 
@@ -194,7 +269,6 @@ describe("scan-lockfile plan mode", () => {
   test("previews a directory scan without scanning packages, writing reports, or updating baseline", async () => {
     const dir = await mkdtemp(join(tmpdir(), "scguard-plan-"));
     Bun.env.SCGUARD_NO_COLOR = "1";
-    Bun.env.SCGUARD_PRESET = "default";
     process.chdir(dir);
     try {
       await writeTestBunLock(dir);

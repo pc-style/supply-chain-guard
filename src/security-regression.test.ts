@@ -12,6 +12,7 @@ import {
   directPackageSpecs,
   findPackageSubcommand,
   nonOptionTokens,
+  packageManagerProjectDir,
   planLockfileSelection,
   stripGuardOptions,
 } from "./commands";
@@ -75,6 +76,40 @@ describe("security regressions", () => {
     expect(result.packageOperation).toBe(true);
     expect(result.action).toBe("install");
     expect(result.specs).toEqual(["lodash"]);
+  });
+
+  test("npm project directory follows prefix and C options", () => {
+    expect(
+      packageManagerProjectDir(
+        "npm",
+        ["--prefix", "app", "install"],
+        "/tmp/root",
+      ),
+    ).toBe("/tmp/root/app");
+    expect(
+      packageManagerProjectDir("npm", ["-C=/tmp/app", "install"], "/tmp/root"),
+    ).toBe("/tmp/app");
+    expect(
+      packageManagerProjectDir(
+        "npm",
+        ["--prefix", "--offline", "install"],
+        "/tmp/root",
+      ),
+    ).toBe("/tmp/root");
+  });
+
+  test("bare yarn is an install except for help and version", () => {
+    expect(classifyPackageCommand("yarn", [])).toMatchObject({
+      packageOperation: true,
+      action: "install",
+      specs: [],
+    });
+    expect(classifyPackageCommand("yarn", ["--help"]).packageOperation).toBe(
+      false,
+    );
+    expect(classifyPackageCommand("yarn", ["--version"]).packageOperation).toBe(
+      false,
+    );
   });
 
   test("workspace selector is not treated as a package spec", () => {
