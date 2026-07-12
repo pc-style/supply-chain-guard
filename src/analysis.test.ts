@@ -6,9 +6,51 @@ import {
   analyzeDirectory,
   isAllowedPinnedTarballUrl,
   isRegistryVersionSpec,
+  npmArtifactCachePath,
   parsePackageSpec,
   resolveNpmVersion,
 } from "./analysis";
+
+describe("npmArtifactCachePath", () => {
+  const base = {
+    name: "same-package",
+    version: "1.0.0",
+  };
+
+  test("changes when a no-integrity lockfile entry resolves to different bytes", () => {
+    const first = npmArtifactCachePath({
+      ...base,
+      tarball: "https://registry.npmjs.org/same-package/-/first.tgz",
+    });
+    const second = npmArtifactCachePath({
+      ...base,
+      tarball: "https://registry.npmjs.org/same-package/-/second.tgz",
+    });
+
+    expect(second).not.toBe(first);
+  });
+
+  test("uses integrity as the artifact identity when available", () => {
+    const first = npmArtifactCachePath({
+      ...base,
+      tarball: "https://registry.npmjs.org/same-package/-/same.tgz",
+      integrity: "sha512-first",
+    });
+    const changedIntegrity = npmArtifactCachePath({
+      ...base,
+      tarball: "https://registry.npmjs.org/same-package/-/same.tgz",
+      integrity: "sha512-second",
+    });
+    const mirrorWithSameIntegrity = npmArtifactCachePath({
+      ...base,
+      tarball: "https://registry.npmmirror.com/same-package/-/same.tgz",
+      integrity: "sha512-first",
+    });
+
+    expect(changedIntegrity).not.toBe(first);
+    expect(mirrorWithSameIntegrity).toBe(first);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // parsePackageSpec

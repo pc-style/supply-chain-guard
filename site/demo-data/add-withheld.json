@@ -3,21 +3,20 @@
   "title": "staged without installing",
   "command": "scguard review chalk@5.4.1",
   "cwd": "./demo",
-  "capturedAt": "2026-05-25T17:48:39.712Z",
+  "capturedAt": "2026-07-12T18:59:37.804Z",
   "lines": [
     "$ scguard review chalk@5.4.1",
     "<span style=\"font-weight:600;color:rgb(251,191,36)\">Findings</span> <span style=\"color:rgb(184,176,176)\">────────────────────────────────────────────────</span>",
-    "<span style=\"font-weight:600;color:rgb(74,222,128)\">ok</span>  <span style=\"color:rgb(196,188,188)\">no findings</span>",
+    "<span style=\"font-weight:600;color:rgb(74,222,128)\">ok</span>  <span style=\"color:rgb(161,161,170)\">no findings</span>",
     "",
-    "<span style=\"font-weight:600;color:rgb(74,222,128)\">ok</span>  <span style=\"color:rgb(196,188,188)\">chalk@5.4.1: low risk, 0 finding(s) - install allowed.</span>",
-    "  <span style=\"color:rgb(184,176,176)\">json</span> <span style=\"color:rgb(196,188,188)\">./demo/.scguard/reports/chalk@5.4.1-report.json</span>",
-    "  <span style=\"color:rgb(184,176,176)\">md  </span> <span style=\"color:rgb(196,188,188)\">./demo/.scguard/reports/chalk@5.4.1-report.md</span>",
+    "<span style=\"font-weight:600;color:rgb(74,222,128)\">ok</span>  <span style=\"color:rgb(161,161,170)\">chalk@5.4.1: low risk, 0 finding(s) - install allowed.</span>",
+    "  <span style=\"color:rgb(184,176,176)\">json</span> <span style=\"color:rgb(161,161,170)\">/private./demo/.scguard/reports/chalk@5.4.1-report.json</span>",
+    "  <span style=\"color:rgb(184,176,176)\">md  </span> <span style=\"color:rgb(161,161,170)\">/private./demo/.scguard/reports/chalk@5.4.1-report.md</span>",
     "",
     "<span style=\"font-weight:600;color:rgb(251,191,36)\">Next steps  </span><span style=\"font-weight:600;color:rgb(184,176,176)\">chalk@5.4.1</span> <span style=\"color:rgb(184,176,176)\">──────────</span>",
-    "  <span style=\"color:rgb(196,188,188)\">Inspect the report, then:</span>",
+    "  <span style=\"color:rgb(161,161,170)\">Inspect the report, then:</span>",
     "    <span style=\"font-weight:600;color:rgb(251,191,36)\">$</span> <span style=\"color:rgb(228,228,231)\">scguard install chalk@5.4.1</span>",
-    "  <span style=\"color:rgb(196,188,188)\">Or request a deeper agent review:</span>",
-    "    <span style=\"font-weight:600;color:rgb(251,191,36)\">$</span> <span style=\"color:rgb(228,228,231)\">scguard agent-review ./demo/.scguard/reports/chalk@5.4.1-report.json --agent codex</span>"
+    "  <span style=\"color:rgb(161,161,170)\">Or re-run with --agent codex for a deeper review.</span>"
   ],
-  "plain": "$ scguard review chalk@5.4.1\n\u001b[1;38;2;251;191;36mFindings\u001b[0m \u001b[38;2;113;113;122m────────────────────────────────────────────────\u001b[0m\n\u001b[1;38;2;74;222;128mok\u001b[0m  \u001b[38;2;161;161;170mno findings\u001b[0m\n\n\u001b[1;38;2;74;222;128mok\u001b[0m  \u001b[38;2;161;161;170mchalk@5.4.1: low risk, 0 finding(s) - install allowed.\u001b[0m\n  \u001b[38;2;113;113;122mjson\u001b[0m \u001b[38;2;161;161;170m./demo/.scguard/reports/chalk@5.4.1-report.json\u001b[0m\n  \u001b[38;2;113;113;122mmd  \u001b[0m \u001b[38;2;161;161;170m./demo/.scguard/reports/chalk@5.4.1-report.md\u001b[0m\n\n\u001b[1;38;2;251;191;36mNext steps  \u001b[38;2;113;113;122mchalk@5.4.1\u001b[0m\u001b[0m \u001b[38;2;113;113;122m──────────\u001b[0m\n  \u001b[38;2;161;161;170mInspect the report, then:\u001b[0m\n    \u001b[1;38;2;251;191;36m$\u001b[0m \u001b[38;2;228;228;231mscguard install chalk@5.4.1\u001b[0m\n  \u001b[38;2;161;161;170mOr request a deeper agent review:\u001b[0m\n    \u001b[1;38;2;251;191;36m$\u001b[0m \u001b[38;2;228;228;231mscguard agent-review ./demo/.scguard/reports/chalk@5.4.1-report.json --agent codex\u001b[0m"
+  "plain": "$ scguard review chalk@5.4.1\n\u001b[1;38;2;251;191;36mFindings\u001b[0m \u001b[38;2;184;176;176m────────────────────────────────────────────────\u001b[0m\n\u001b[1;38;2;74;222;128mok\u001b[0m  \u001b[38;2;161;161;170mno findings\u001b[0m\n\n\u001b[1;38;2;74;222;128mok\u001b[0m  \u001b[38;2;161;161;170mchalk@5.4.1: low risk, 0 finding(s) - install allowed.\u001b[0m\n  \u001b[38;2;184;176;176mjson\u001b[0m \u001b[38;2;161;161;170m/private./demo/.scguard/reports/chalk@5.4.1-report.json\u001b[0m\n  \u001b[38;2;184;176;176mmd  \u001b[0m \u001b[38;2;161;161;170m/private./demo/.scguard/reports/chalk@5.4.1-report.md\u001b[0m\n\n\u001b[1;38;2;251;191;36mNext steps  \u001b[38;2;184;176;176mchalk@5.4.1\u001b[0m\u001b[0m \u001b[38;2;184;176;176m──────────\u001b[0m\n  \u001b[38;2;161;161;170mInspect the report, then:\u001b[0m\n    \u001b[1;38;2;251;191;36m$\u001b[0m \u001b[38;2;228;228;231mscguard install chalk@5.4.1\u001b[0m\n  \u001b[38;2;161;161;170mOr re-run with --agent codex for a deeper review.\u001b[0m"
 }

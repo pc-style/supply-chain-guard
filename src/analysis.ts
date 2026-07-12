@@ -207,8 +207,12 @@ async function scanNpmArtifact(context: {
     packageAge,
     scanReason,
   } = context;
-  const safeName = name.replaceAll("/", "_").replaceAll("@", "");
-  const artifactPath = join(CACHE_DIR, `${safeName}-${version}.tgz`);
+  const artifactPath = npmArtifactCachePath({
+    name,
+    version,
+    tarball,
+    integrity,
+  });
   const offlineOpt = { offline };
   const packageAgePromise = packageAge
     ? Promise.resolve(packageAge)
@@ -265,6 +269,23 @@ async function scanNpmArtifact(context: {
     }
   }
   return report;
+}
+
+export function npmArtifactCachePath(artifact: {
+  name: string;
+  version: string;
+  tarball: string;
+  integrity?: string;
+}): string {
+  const safeName = artifact.name.replaceAll("/", "_").replaceAll("@", "");
+  const identity = artifact.integrity
+    ? `integrity:${artifact.integrity}`
+    : `tarball:${artifact.tarball}`;
+  const identityHash = createHash("sha256")
+    .update(identity)
+    .digest("hex")
+    .slice(0, 16);
+  return join(CACHE_DIR, `${safeName}-${artifact.version}-${identityHash}.tgz`);
 }
 
 export function isAllowedPinnedTarballUrl(url: string): boolean {
