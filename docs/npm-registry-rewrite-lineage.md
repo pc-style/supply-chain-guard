@@ -1,6 +1,6 @@
 # npm-registry-rewrite lineage
 
-Supply Chain Guard succeeds [`pc-style/npm-registry-rewrite`](https://github.com/pc-style/npm-registry-rewrite), which was archived on 2026-08-16 with its full Git history and branches preserved.
+Supply Chain Guard succeeds [`pc-style/npm-registry-rewrite`](https://github.com/pc-style/npm-registry-rewrite). Its archive was prepared on 2026-08-16 with full Git history and branches preserved; changing the repository to read-only remains pending repository-settings authorization.
 
 The predecessor's final `main` commit was `c73848cf225d6f566f22b2b465a2695fb6d32608`. Its focused registry-trust implementation downloaded npm tarballs, verified `dist.integrity` (SHA-512) with `dist.shasum` (SHA-1) fallback, and denied a package when verification failed. The corresponding tests are preserved in that repository's `test/reviewer-verification.test.ts` and history.
 
