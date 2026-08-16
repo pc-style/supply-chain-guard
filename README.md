@@ -2,19 +2,37 @@
 
 Inspect npm packages and VS Code extensions before they touch your project.
 
+> [!IMPORTANT]
+> **Status: beta.** The CLI, report schema, and policies can change before 1.0. The current compatibility target is Bun 1.3.14 on macOS and Linux.
+
 > [!WARNING]
-> Supply Chain Guard is early-stage software. It can miss malicious packages, flag safe packages, and break package-manager flows. Treat it as a warning layer, not proof that a dependency is safe.
+> Supply Chain Guard can miss malicious packages, flag safe packages, and break package-manager flows. Treat it as a warning layer, not proof that a dependency is safe.
 
 Website: [scguard.pcstyle.dev](https://scguard.pcstyle.dev/)
 
 ## Install
 
+There is no tagged release yet. Install the currently reviewed source snapshot by immutable commit:
+
 ```sh
-curl -fsSL https://raw.githubusercontent.com/pc-style/supply-chain-guard/main/install.sh | bash
+REF=666e7f338c6bc4f0187c18c0f6f2d846c47ac077
+git init "$HOME/.local/share/supply-chain-guard"
+git -C "$HOME/.local/share/supply-chain-guard" remote add origin https://github.com/pc-style/supply-chain-guard.git
+git -C "$HOME/.local/share/supply-chain-guard" fetch --depth 1 origin "$REF"
+git -C "$HOME/.local/share/supply-chain-guard" checkout --detach "$REF"
+(
+  cd "$HOME/.local/share/supply-chain-guard"
+  bun install --frozen-lockfile
+  bun run build
+)
+mkdir -p "$HOME/.local/bin"
+cp "$HOME/.local/share/supply-chain-guard/dist/scguard" "$HOME/.local/bin/scguard"
+chmod +x "$HOME/.local/bin/scguard"
+scguard config
 eval "$(scguard shell-hook)"
 ```
 
-The installer clones or updates the project under `~/.local/share/supply-chain-guard`, builds the Bun executable, and links `~/.local/bin/scguard`.
+This pins both source and dependencies but does not provide a signed binary or published checksum. Review and change `REF` deliberately when updating. `install.sh` uses the same immutable commit by default and accepts an explicit `SCGUARD_REF`; callers must still obtain and review the installer script itself.
 
 ## Use
 
@@ -71,6 +89,15 @@ Public `SCGUARD_*` controls are limited to:
 - `SCGUARD_NO_COLOR=1` disables ANSI color. Standard `NO_COLOR` also works.
 
 Package IDs passed to `code --install-extension` are blocked because the editor would download them before inspection. Download the `.vsix`, run `scguard scan-vsix`, then install the reviewed file.
+
+## Trust and privacy boundaries
+
+- Static analysis and reports run locally. Reports can include package names, paths, findings, and selected source evidence; they remain under `.scguard/reports` unless you share them.
+- Online mode downloads public package or extension artifacts and queries npm, OSV, and—when configured with a token and organization—Socket using package identifiers. `--offline` disables those network checks.
+- `--agent codex` and `--agent pi` pass the generated review prompt and report content to the selected local CLI. That CLI may send the content to its configured model provider; do not enable agent review for private artifacts unless that provider is acceptable.
+- The gate is not a sandbox. Package installation runs through the selected package manager after approval and retains that package manager's normal privileges.
+
+This repository is the canonical successor to [`pc-style/npm-registry-rewrite`](docs/npm-registry-rewrite-lineage.md); the lineage note records the inherited registry-integrity safety property without claiming a verbatim code copy. The existing MIT license covers the source. No release artifacts are currently signed or published.
 
 ## Development
 

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Beta maturity, trust-boundary, immutable-source install, and release-signing documentation.
+- The installer now fetches and verifies an explicit commit instead of pulling mutable `main`.
+- TypeScript is now a locked development dependency and runs through Bun instead of an unpinned `bunx` download.
 - `scguard skill` (help) and `scguard skill install` (runs `npx skills add pc-style/supply-chain-guard`) for Codex, Cursor, Pi, and other agents.
 - Bundled `skills/scguard/SKILL.md` published with the repo for the Vercel skills CLI.
 - Biome for formatting and linting, wired into `bun run check` and CI.
@@ -38,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.1] - 2026-05-25
 
+This version is recorded in the package manifest and changelog; no `v0.1.1` Git tag or GitHub release was published.
+
 ### Added
 
 - Local install gate for npm packages and VS Code extensions (`scguard review`, `install`, `scan-vsix`, `scan-lockfile`).
@@ -48,5 +53,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional Codex and PI agent review integration.
 - Static site and demo captures at [scguard.pcstyle.dev](https://scguard.pcstyle.dev/).
 
-[Unreleased]: https://github.com/pc-style/supply-chain-guard/compare/v0.1.1...HEAD
-[0.1.1]: https://github.com/pc-style/supply-chain-guard/releases/tag/v0.1.1
+[Unreleased]: https://github.com/pc-style/supply-chain-guard/commits/main
