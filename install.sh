@@ -2,6 +2,8 @@
 set -euo pipefail
 
 REPO_URL="${SCGUARD_REPO_URL:-https://github.com/pc-style/supply-chain-guard.git}"
+DEFAULT_REF="666e7f338c6bc4f0187c18c0f6f2d846c47ac077"
+INSTALL_REF="${SCGUARD_REF:-$DEFAULT_REF}"
 INSTALL_DIR="${SCGUARD_INSTALL_DIR:-$HOME/.local/share/supply-chain-guard}"
 BIN_DIR="${SCGUARD_BIN_DIR:-$HOME/.local/bin}"
 BIN_PATH="$BIN_DIR/scguard"
@@ -29,6 +31,7 @@ Usage:
 
 Environment overrides:
   SCGUARD_REPO_URL          Default: https://github.com/pc-style/supply-chain-guard.git
+  SCGUARD_REF               Git ref to install. Default: $DEFAULT_REF
   SCGUARD_INSTALL_DIR       Default: \$HOME/.local/share/supply-chain-guard
   SCGUARD_BIN_DIR           Default: \$HOME/.local/bin
   SCGUARD_CONFIG_DIR        Default: \$HOME/.config/supply-chain-guard
@@ -136,17 +139,28 @@ Use it as a local warning layer, not as proof that dependencies are safe.
 EOF
 echo
 
-if [ -d "$INSTALL_DIR/.git" ]; then
-  echo "Updating Supply Chain Guard in $INSTALL_DIR"
-  git -C "$INSTALL_DIR" pull --ff-only
-else
-  echo "Installing Supply Chain Guard into $INSTALL_DIR"
+if [ ! -d "$INSTALL_DIR/.git" ]; then
+  echo "Preparing Supply Chain Guard in $INSTALL_DIR"
   rm -rf "$INSTALL_DIR"
-  git clone "$REPO_URL" "$INSTALL_DIR"
+  git init --quiet "$INSTALL_DIR"
+  git -C "$INSTALL_DIR" remote add origin "$REPO_URL"
 fi
 
+echo "Fetching Supply Chain Guard revision $INSTALL_REF"
+git -C "$INSTALL_DIR" remote set-url origin "$REPO_URL"
+git -C "$INSTALL_DIR" fetch --depth 1 --quiet origin "$INSTALL_REF"
+git -C "$INSTALL_DIR" checkout --detach --quiet FETCH_HEAD
+RESOLVED_REF="$(git -C "$INSTALL_DIR" rev-parse HEAD)"
+RESOLVED_REF_LOWER="$(printf '%s' "$RESOLVED_REF" | tr '[:upper:]' '[:lower:]')"
+INSTALL_REF_LOWER="$(printf '%s' "$INSTALL_REF" | tr '[:upper:]' '[:lower:]')"
+if [[ "$INSTALL_REF" =~ ^[0-9a-fA-F]{40}$ ]] && [[ "$RESOLVED_REF_LOWER" != "$INSTALL_REF_LOWER" ]]; then
+  echo "Downloaded revision $RESOLVED_REF did not match requested revision $INSTALL_REF." >&2
+  exit 1
+fi
+echo "Building verified source revision $RESOLVED_REF"
+
 cd "$INSTALL_DIR"
-bun install
+bun install --frozen-lockfile
 bun run build
 chmod +x dist/scguard
 
